@@ -1,0 +1,24 @@
+{
+  "name": "shopcrew",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "concurrently -n server,web -c green,blue \"npm run dev -w @shopcrew/server\" \"npm run dev -w @shopcrew/web\"",
+    "build": "npm run build -w @shopcrew/web && npm run build -w @shopcrew/server",
+    "start": "npm run start -w @shopcrew/server",
+    "test": "npm run test -w @shopcrew/server",
+    "db:reset": "npm run db:reset -w @shopcrew/server",
+    "typecheck": "npm run typecheck -w @shopcrew/server && npm run typecheck -w @shopcrew/web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

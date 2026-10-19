@@ -1,0 +1,11 @@
+# Merge this into render.yaml on 15 or 16 Nov 2026, then redeploy.
+# Also add the web service env var:
+#   - key: DATABASE_URL
+#     fromDatabase:
+#       name: shopcrew-db
+#       property: connectionString
+
+databases:
+  - name: shopcrew-db
+    plan: free
+    region: oregon

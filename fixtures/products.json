@@ -1,0 +1,8 @@
+[
+  {"sku":"CEDAR","name":"Cedar & Smoke","cost":9.5,"price":28,"minPrice":22,"maxPrice":36,"stock":42,"leadTimeDays":5,"supplierId":"acme","trueElasticity":-1.35,"baseDemand":3.2,"hue":"#6b4a32","blurb":"Resinous cedar with a clean thread of smoke."},
+  {"sku":"LINEN","name":"Linen & Sea Salt","cost":8,"price":24,"minPrice":18,"maxPrice":32,"stock":36,"leadTimeDays":4,"supplierId":"acme","trueElasticity":-1.1,"baseDemand":2.8,"hue":"#cbbfa8","blurb":"Washed linen and a cool salt air."},
+  {"sku":"FIG","name":"Fig Leaf","cost":7.5,"price":26,"minPrice":20,"maxPrice":34,"stock":30,"leadTimeDays":6,"supplierId":"acme","trueElasticity":-1.5,"baseDemand":2.4,"hue":"#3f6b45","blurb":"Green fig leaf, milky and a little bitter."},
+  {"sku":"NIGHT","name":"Night Market","cost":11,"price":34,"minPrice":26,"maxPrice":42,"stock":28,"leadTimeDays":7,"supplierId":"acme","trueElasticity":-1.2,"baseDemand":2.1,"hue":"#2c2440","blurb":"Night jasmine, orange peel, and warm asphalt."},
+  {"sku":"HONEY","name":"Honey Tobacco","cost":10,"price":32,"minPrice":24,"maxPrice":40,"stock":24,"leadTimeDays":5,"supplierId":"acme","trueElasticity":-0.9,"baseDemand":1.8,"hue":"#c4843c","blurb":"Soft honey over dried tobacco leaf."},
+  {"sku":"CITRUS","name":"Citrus Grove","cost":6.5,"price":22,"minPrice":16,"maxPrice":28,"stock":50,"leadTimeDays":3,"supplierId":"unclaimed","trueElasticity":-1.6,"baseDemand":3.6,"hue":"#e0a106","blurb":"Bitter orange, leaf, and a bright peel."}
+]
