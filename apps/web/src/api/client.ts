@@ -7,6 +7,9 @@ export interface PublicConfig {
   llmProvider?: string;
   studioAiEnabled?: boolean;
   studioAiModels?: string[];
+  demoBuyerEmail?: string;
+  demoBuyerHint?: string;
+  demoPublicReset?: boolean;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -23,6 +26,7 @@ export const api = {
   products: () => request<Product[]>("/api/products"),
   product: (sku: string) => request<Product>(`/api/products/${sku}`),
   orders: () => request<OrderRow[]>("/api/orders"),
+  order: (id: string) => request<OrderRow & { live: boolean; awaitingWebhook: boolean }>(`/api/orders/${id}`),
   proposals: () => request<Proposal[]>("/api/proposals"),
   inventory: () => request<InventoryRow[]>("/api/inventory"),
   payouts: () => request<PayoutRow[]>("/api/payouts"),
@@ -41,7 +45,12 @@ export const api = {
   advance: () => request<{ simDay: number; summary: string }>("/api/sim/advance", { method: "POST", body: "{}" }),
   autorun: (enabled: boolean) => request<SimState>("/api/sim/autorun", { method: "POST", body: JSON.stringify({ enabled }) }),
   pause: (paused: boolean) => request<SimState>("/api/sim/pause", { method: "POST", body: JSON.stringify({ paused }) }),
-  reset: (token: string) => request<SimState>("/api/sim/reset", { method: "POST", body: "{}", headers: { "x-admin-token": token } }),
+  reset: (token?: string) =>
+    request<SimState>("/api/sim/reset", {
+      method: "POST",
+      body: "{}",
+      headers: token ? { "x-admin-token": token } : undefined,
+    }),
   approve: (id: string) => request<Proposal>(`/api/proposals/${id}/approve`, { method: "POST", body: "{}" }),
   reject: (id: string) => request<Proposal>(`/api/proposals/${id}/reject`, { method: "POST", body: "{}" }),
   rollback: (id: string) => request<{ status: string; message: string }>(`/api/proposals/${id}/rollback`, { method: "POST", body: "{}" }),
@@ -58,10 +67,17 @@ export const api = {
   capturePool: (token: string) => request<{ ok: boolean; mapping: { id: string; paypalOrderId: string | null; paypalCaptureId: string | null }[] }>("/api/admin/capture-pool", { method: "POST", body: "{}", headers: { "x-admin-token": token } }),
 };
 
-export interface Product { id: string; sku: string; name: string; price: number; blurb: string; hue: string; stock: number; }
-export interface OrderRow { id: string; customer: string; source: string; paypalOrderId: string | null; paypalCaptureId: string | null; status: string; total: number; refundedTotal: number; simDay: number; createdAt: string; }
+export interface Product {
+  id: string; sku: string; name: string; price: number; blurb: string; hue: string; stock: number;
+  priceNote?: string | null; priceSetBy?: string | null; priceSimDay?: number | null;
+}
+export interface OrderRow {
+  id: string; customer: string; source: string; paypalOrderId: string | null; paypalCaptureId: string | null;
+  status: string; total: number; refundedTotal: number; simDay: number; createdAt: string; confirmedAt?: string | null;
+  live?: boolean; awaitingWebhook?: boolean;
+}
 export interface InventoryRow { id: string; sku: string; name: string; stock: number; daysOfCover: number; forecast: number; lower: number; upper: number; reorderPoint: number; mape: number; price: number; competitorMin: number | null; elasticity: number; r2: number; leadTimeDays: number; spark: number[]; }
-export interface PayoutRow { id: string; senderBatchId: string; payoutBatchId: string | null; payoutItemId: string | null; receiver: string; amount: number; status: string; sku: string; createdAt: string; negotiation?: NegoStep[] | null; qty?: number | null; quote?: number | null; }
+export interface PayoutRow { id: string; senderBatchId: string; payoutBatchId: string | null; payoutItemId: string | null; receiver: string; amount: number; status: string; sku: string; createdAt: string; confirmedAt?: string | null; negotiation?: NegoStep[] | null; qty?: number | null; quote?: number | null; }
 export interface NegoStep { from: string; type: string; unitCost: number; round: number; }
 export interface MessageRow {
   id: string; simDay: number; customer: string; customerId: string; orderId: string | null;
@@ -76,6 +92,8 @@ export interface Proposal {
   amount: number | null; confidenceModel: number | null; confidenceLlm: number | null; riskScore: number | null;
   policyResult: string; policy: unknown; status: string; paypalRef: string | null; payoutStatus: string | null; reasoning: string;
   toolName: string; toolArgs: unknown; trace: unknown; inputs: unknown; correlationId: string; reason: string | null; decidedBy: string | null;
+  decidedAt?: string | null; editedByOwner?: boolean; executionPath?: string | null; idempotencyKey?: string | null;
+  refundStatus?: string | null; refundConfirmedAt?: string | null;
 }
 export interface AuditRow { id: string; ts: string; actor: string; agent: string | null; event: string; proposalId: string | null; correlationId: string | null; message: string; }
 export interface Policy { agent: string; enabled: boolean; autoApproveMax: number; dailyBudget: number; maxPctOfOrder: number; maxPriceChangePct: number; minMarginPct: number; }

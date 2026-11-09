@@ -83,6 +83,14 @@ export const orders = pgTable("orders", {
   currency: text("currency").notNull(),
   simDay: integer("sim_day").notNull(),
   createdAt: text("created_at").notNull(),
+  confirmedAt: text("confirmed_at"),
+});
+
+export const checkoutDrafts = pgTable("checkout_drafts", {
+  paypalOrderId: text("paypal_order_id").primaryKey(),
+  linesJson: jsonb("lines_json").notNull(),
+  total: doublePrecision("total").notNull(),
+  createdAt: text("created_at").notNull(),
 });
 
 export const orderItems = pgTable("order_items", {
@@ -238,4 +246,19 @@ export const llmCache = pgTable("llm_cache", {
   requestJson: jsonb("request_json").notNull(),
   responseJson: jsonb("response_json").notNull(),
   createdAt: text("created_at").notNull(),
+});
+
+/** Studio AI harness telemetry runs (P3.3). */
+export const studioAiRuns = pgTable("studio_ai_runs", {
+  id: text("id").primaryKey(),
+  threadId: text("thread_id").notNull(),
+  runId: text("run_id").notNull(),
+  agentId: text("agent_id").notNull(),
+  query: text("query"),
+  status: text("status").notNull(),
+  toolCallsJson: jsonb("tool_calls_json"),
+  usageJson: jsonb("usage_json"),
+  error: text("error"),
+  createdAt: text("created_at").notNull(),
+  finishedAt: text("finished_at"),
 });

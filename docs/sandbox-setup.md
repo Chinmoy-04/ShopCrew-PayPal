@@ -7,7 +7,7 @@ PayPal asks you to pick a **Sandbox Business Account** when you create an app. C
    - **Business**, **US**, name it **ShopCrew Store**. Fund the balance to about $5,000. This is the seller your apps attach to.
    - **Personal**, **US**, **Buyer Bob**. Use this login in the demo video.
    - **Personal**, **US**, **Acme Supplies**. Put that email in `SUPPLIER_EMAILS`.
-   - Do **not** create an account for `UNCLAIMED_SUPPLIER_EMAIL`. Payouts to it stay `UNCLAIMED`, which is how rollback is demonstrated.
+   - Do **not** create an account for `UNCLAIMED_SUPPLIER_EMAIL` (use a real-looking address such as `unclaimed-supplier@shopcrew.example`, not `@shopcrew.test`). Payouts to it stay `UNCLAIMED`, which is how rollback is demonstrated.
 3. **Apps & Credentials → Sandbox → Create App**. In the **Sandbox Account** dropdown, choose **ShopCrew Store** (US), not the default India business.
    - `shopcrew-dev` — later: local webhooks (cloudflared or ngrok URL).
    - `shopcrew-prod` — later: the Render URL.
@@ -27,17 +27,19 @@ Sandbox delivery is often 10–75 seconds. The UI treats the API response as pro
 
 ## Capture pool
 
-Refunds need a real capture id. After a few sandbox checkouts, put them in `fixtures/capture-pool.json`:
+Refunds need a real capture id. Qualifying live checkouts (**≥ $36**, prefer one **≥ $45** and one large cart ~$300 via qty 10) **auto-register** into `fixtures/capture-pool.json` as `ord-large` / `ord-small` — no manual "Link capture pool" click.
+
+The paid Render Blueprint persists this file at `/var/data/capture-pool.json` via `CAPTURE_POOL_PATH`. Leave `CAPTURE_POOL_JSON` unset for a new hosted demo. If importing an existing pool onto a new disk, the optional bootstrap value has this shape (the mutable file takes priority once present):
 
 ```json
 {
   "orders": [
-    { "id": "ord-small", "paypalOrderId": "...", "paypalCaptureId": "..." },
-    { "id": "ord-large", "paypalOrderId": "...", "paypalCaptureId": "..." }
+    { "id": "ord-small", "paypalOrderId": "...", "paypalCaptureId": "...", "total": 36, "refunded": 0 },
+    { "id": "ord-large", "paypalOrderId": "...", "paypalCaptureId": "...", "total": 300, "refunded": 0 }
   ]
 }
 ```
 
-Then `npm run db:reset`. Empty entries keep the DRY- ids, which never call PayPal.
+Then reset the demo so seed overlays those ids onto demo orders. A normal restart of a populated persistent database does not reseed. Empty / missing slots keep DRY- ids, which never call PayPal. When a capture is exhausted, refunds show **DRY: capture exhausted** instead of failing with a PayPal 422. See [deployment and database guide](deployment.md).
 
-Partial refunds ($8, then $20 after an edit) are intentional so one capture survives several demo resets. When a capture is fully refunded, replace it.
+Partial refunds ($8, then $20 after an edit) are intentional so one capture survives several demo resets.

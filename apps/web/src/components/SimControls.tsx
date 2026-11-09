@@ -4,7 +4,7 @@ import { onLive } from "../hooks/useLiveEvents";
 import { useSimTime } from "../hooks/SimTimeContext";
 import { SimClock } from "./SimClock";
 
-export function SimControls() {
+export function SimControls({ demoPublicReset }: { demoPublicReset?: boolean }) {
   const { setSimMeta } = useSimTime();
   const [sim, setSim] = useState<SimState | null>(null);
   const [kpis, setKpis] = useState<Kpis | null>(null);
@@ -49,7 +49,31 @@ export function SimControls() {
           <button className="btn primary" disabled={busy || sim?.pausedAll} onClick={() => run(() => api.advance())}>Advance day</button>
           <button className="btn" disabled={busy} onClick={() => run(() => api.autorun(!sim?.autorun))}>{sim?.autorun ? "Stop" : "Auto-run"}</button>
           <button className="btn" disabled={busy} onClick={() => run(() => api.pause(!sim?.pausedAll))}>{sim?.pausedAll ? "Resume" : "Pause"}</button>
-          <button className="btn" disabled={busy} onClick={() => run(() => api.reset(window.prompt("Admin token", "demo") || ""))}>Reset</button>
+          <button
+            className="btn"
+            disabled={busy}
+            title={
+              demoPublicReset
+                ? "Shared demo reset (60s cooldown, no token)"
+                : "Uses ADMIN_TOKEN from .env (default shopcrew-demo locally; random on Render)"
+            }
+            onClick={() => {
+              if (demoPublicReset) {
+                void run(() => api.reset());
+                return;
+              }
+              void run(() =>
+                api.reset(
+                  window.prompt(
+                    "Admin token (ADMIN_TOKEN from .env; default shopcrew-demo locally, random on Render)",
+                    "shopcrew-demo",
+                  ) || "",
+                ),
+              );
+            }}
+          >
+            Reset
+          </button>
         </div>
         {kpis && (
           <div className="control-kpis">

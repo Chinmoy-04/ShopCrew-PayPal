@@ -1,4 +1,4 @@
-import { Component, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type {
   AgAiHarnessSetup,
   AgDataSourcesDefinition,
@@ -9,6 +9,7 @@ import type {
 import { AgStudioAiModule } from "ag-studio";
 import { AgStudio, AgStudioProvider } from "ag-studio-react";
 import { api } from "../api/client";
+import { onLive } from "../hooks/useLiveEvents";
 import { buildStudioAi } from "../studio/ai";
 import { buildStudioData, type InsightsPayload } from "../studio/data";
 import { shopCrewReport, STUDIO_STATE_KEY } from "../studio/initial-report";
@@ -38,19 +39,43 @@ export function InsightsPage({
   const [payload, setPayload] = useState<InsightsPayload | null>(null);
   const [error, setError] = useState("");
   const [mode, setMode] = useState<AgStudioMode>("view");
+  const [dataEpoch, setDataEpoch] = useState(0);
   const [initialState] = useState<AgReportState<ShopCrewRegistry>>(
     () => (loadSavedReport() as AgReportState<ShopCrewRegistry> | null) ?? shopCrewReport,
   );
   const [savedNote, setSavedNote] = useState("");
+  const [anomaly, setAnomaly] = useState<{ day: number; amount: number; z: number } | null>(null);
+  const [prefillPrompt, setPrefillPrompt] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
+  const reload = useCallback(() => {
     api
       .insights()
-      .then((data) => setPayload(data as InsightsPayload))
+      .then((data) => {
+        setPayload(data as InsightsPayload);
+        setDataEpoch((n) => n + 1);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load insights"));
+    fetch("/api/insights/anomalies")
+      .then((r) => r.json())
+      .then((data: { spike?: { day: number; amount: number; z: number } | null }) => {
+        setAnomaly(data.spike ?? null);
+      })
+      .catch(() => setAnomaly(null));
   }, []);
 
-  const studioData = useMemo(() => (payload ? buildStudioData(payload) : null), [payload]);
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  useEffect(() => {
+    return onLive(() => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => reload(), 1500);
+    });
+  }, [reload]);
+
+  const studioData = useMemo(() => (payload ? buildStudioData(payload) : null), [payload, dataEpoch]);
 
   const ai = useMemo<AgAiHarnessSetup | undefined>(() => {
     if (!studioAiEnabled) return undefined;
@@ -78,6 +103,13 @@ export function InsightsPage({
     window.location.reload();
   }
 
+  function openAnomalyThread() {
+    setPrefillPrompt(
+      "Is any agent refunding unusually much? Build a refund anomaly widget for the last 30 days using refund-sentinel.",
+    );
+    setMode("edit");
+  }
+
   if (error) {
     return (
       <main className="page">
@@ -100,7 +132,7 @@ export function InsightsPage({
         <div>
           <h1>Insights</h1>
           <p className="note">
-            AG Studio report with ShopCrew widgets{studioAiEnabled ? " and AI assistant" : ""}.
+            AG Studio report with ShopCrew widgets{studioAiEnabled ? " and custom agents" : ""}.
             {!licenseKey && " Running without a licence key (watermark OK for the hackathon)."}
             {!studioAiEnabled && " Set AG_STUDIO_OPENAI_API_KEY to enable Studio AI."}
           </p>
@@ -119,9 +151,26 @@ export function InsightsPage({
         </div>
       </header>
 
-      {payload.kpis.summary && <p className="note insights-summary">{payload.kpis.summary}</p>}
+      {anomaly && (
+        <div className="insights-anomaly" role="status">
+          <strong>
+            Refund spike {anomaly.z.toFixed(1)} sigma above average (day {anomaly.day}, $
+            {anomaly.amount.toFixed(2)})
+          </strong>
+          <button type="button" className="btn primary" onClick={openAnomalyThread}>
+            Ask refund-sentinel
+          </button>
+        </div>
+      )}
+
+      {prefillPrompt && (
+        <p className="note insights-prefill">
+          Prefill for Studio AI: <em>{prefillPrompt}</em> — open Ask Studio and send this prompt.
+        </p>
+      )}
 
       <StudioShell
+        key={dataEpoch}
         licenseKey={licenseKey ?? ""}
         data={studioData}
         mode={mode}
@@ -152,7 +201,6 @@ function StudioShell({
   widgets: (defaults: AgWidgetsConfig) => AgWidgetsConfig<ShopCrewRegistry>;
 }) {
   const modules = useMemo(() => (ai ? [AgStudioAiModule] : []), [ai]);
-  // Formats/buckets stay default; widgets are the only registry extension.
   const studioData = data as AgDataSourcesDefinition<ShopCrewRegistry>;
 
   return (

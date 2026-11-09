@@ -1,23 +1,57 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { api, type Kpis } from "../api/client";
 
 export function LandingPage() {
+  const [kpis, setKpis] = useState<Kpis | null>(null);
+
+  useEffect(() => {
+    void api.kpis().then(setKpis).catch(() => undefined);
+  }, []);
+
+  const day = kpis?.simDay ?? 0;
+  const pending = kpis?.pending ?? 0;
+  const auto = kpis?.autoApproved ?? 0;
+  const spend = kpis?.spendToday ?? 0;
+  const budget = kpis?.budget ?? 0;
+
   return (
     <main className="page">
       <section className="hero">
         <div>
+          <p className="eyebrow">Hearth &amp; Wick · sim day {day}</p>
           <div className="brand">ShopCrew</div>
           <h1>Your shop's back office, run by AI agents. You stay in control.</h1>
-          <p className="lede">Pricing, inventory, and customer service propose the work. PayPal moves the money. You approve the rest in one grid.</p>
+          <p className="lede">
+            Pricing, inventory, and customer service propose the work. PayPal moves the money. You approve the rest in one grid.
+          </p>
           <div className="cta">
-            <Link className="btn primary" to="/control">Open live demo</Link>
-            <a className="btn" href="https://render.com/deploy?repo=https://github.com/YOUR_GITHUB/shopcrew">Deploy to Render</a>
+            <Link className="btn primary" to="/shop">Try the demo</Link>
+            <Link className="btn" to="/control">Open control room</Link>
+            <a className="btn" href="https://render.com/deploy?repo=https://github.com/Chinmoy-04/ShopCrew-PayPal">Deploy to Render</a>
           </div>
         </div>
-        <div className="feed" aria-hidden="true">
-          <div className="feed-row"><span className="badge confirmed">auto</span><span>Refund $8 · cracked lid</span><span>$8</span></div>
-          <div className="feed-row"><span className="badge pending">needs you</span><span>Full refund, edit before paying</span><span>$45</span></div>
-          <div className="feed-row"><span className="badge blocked">blocked</span><span>15% discount · 3 days of cover</span><span>Night</span></div>
-          <div className="feed-row"><span className="badge confirmed">paid</span><span>Supplier payout · Acme</span><span>$182</span></div>
+        <div className="feed" aria-label="Live demo snapshot">
+          <div className="feed-row">
+            <span className="badge confirmed">auto</span>
+            <span>Refunds under policy today</span>
+            <span>{auto}</span>
+          </div>
+          <div className="feed-row">
+            <span className="badge pending">needs you</span>
+            <span>Pending approvals in the queue</span>
+            <span>{pending}</span>
+          </div>
+          <div className="feed-row">
+            <span className="badge blocked">budget</span>
+            <span>Spend vs daily agent budgets</span>
+            <span>${spend.toFixed(0)}/${budget.toFixed(0)}</span>
+          </div>
+          <div className="feed-row">
+            <span className="badge confirmed">live</span>
+            <span>Decisions logged this sim day</span>
+            <span>{kpis?.decisions ?? "—"}</span>
+          </div>
         </div>
       </section>
       <section className="section">
@@ -25,8 +59,11 @@ export function LandingPage() {
         <p>Solo sellers lose the morning to tickets, stock-outs, and competitor prices. Tools that only suggest still leave every refund and every supplier payment in human hands.</p>
         <div className="stats">
           <div className="stat"><strong>3 agents</strong>pricing, inventory, service</div>
-          <div className="stat"><strong>$0 over budget</strong>the policy gate is the spender</div>
-          <div className="stat"><strong>1 grid</strong>approve, edit, or roll back</div>
+          <div className="stat">
+            <strong>{budget ? `$${Math.max(0, budget - spend).toFixed(0)} headroom` : "$0 over budget"}</strong>
+            the policy gate is the spender
+          </div>
+          <div className="stat"><strong>{pending} waiting</strong>approve, edit, or roll back</div>
         </div>
       </section>
       <section className="section">
@@ -39,7 +76,7 @@ export function LandingPage() {
       </section>
       <section className="section">
         <h2>Built with</h2>
-        <p>PayPal Agent Toolkit, Orders v2, Payouts, JavaScript SDK v6, webhooks, AG Grid, and Render.</p>
+        <p>PayPal Agent Toolkit, Orders v2, Payouts, JavaScript SDK v6, webhooks, AG Grid, AG Studio, and Render.</p>
       </section>
     </main>
   );

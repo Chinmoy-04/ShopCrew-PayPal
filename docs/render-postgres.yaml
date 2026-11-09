@@ -1,4 +1,5 @@
-# Merge this into render.yaml on 15 or 16 Nov 2026, then redeploy.
+# OPTIONAL paid alternative; NOT required by the default PGlite + disk deployment.
+# Review cost and docs/deployment.md before merging. Setting DATABASE_URL does not migrate data.
 # Also add the web service env var:
 #   - key: DATABASE_URL
 #     fromDatabase:
@@ -7,5 +8,5 @@
 
 databases:
   - name: shopcrew-db
-    plan: free
+    plan: basic-256mb
     region: oregon

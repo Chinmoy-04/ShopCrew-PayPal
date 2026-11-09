@@ -13,6 +13,7 @@ export type AppDb = ReturnType<typeof drizzlePglite<typeof schema>>;
 let database: AppDb | null = null;
 let driver: "pglite" | "postgres" = "pglite";
 let pool: pg.Pool | null = null;
+let embedded: PGlite | null = null;
 
 async function runSchema(exec: (sql: string) => Promise<unknown>) {
   const parts = SCHEMA_SQL.split(/;\s*\n/).map((part) => part.trim()).filter(Boolean);
@@ -32,6 +33,7 @@ export async function initDb(): Promise<AppDb> {
   const dir = process.env.PGLITE_DIR || path.join(repoRoot(), "apps", "server", ".data", "pglite");
   fs.mkdirSync(dir, { recursive: true });
   const client = new PGlite(dir);
+  embedded = client;
   await runSchema((sql) => client.exec(sql));
   database = drizzlePglite(client, { schema });
   driver = "pglite";
@@ -49,6 +51,15 @@ export function dbDriver(): "pglite" | "postgres" {
 
 export async function closeDb(): Promise<void> {
   await pool?.end();
+  await embedded?.close();
+  embedded = null;
   pool = null;
   database = null;
+}
+
+/** Consistent PGlite archive: do not copy an open database's raw directory. */
+export async function exportEmbeddedDatabase(): Promise<Buffer> {
+  if (!embedded) throw Object.assign(new Error("Use pg_dump for a Postgres deployment."), { statusCode: 409 });
+  const archive = await embedded.dumpDataDir("gzip");
+  return Buffer.from(await archive.arrayBuffer());
 }

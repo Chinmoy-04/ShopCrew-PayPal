@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, type Product } from "../api/client";
 
 export function cartItems(): { sku: string; qty: number }[] {
@@ -8,6 +8,17 @@ export function cartItems(): { sku: string; qty: number }[] {
 }
 export function saveCart(items: { sku: string; qty: number }[]) {
   localStorage.setItem("shopcrew-cart", JSON.stringify(items));
+}
+
+function HowToTest({ hint, email }: { hint?: string; email?: string }) {
+  return (
+    <details className="how-to-test">
+      <summary>How to test (sandbox)</summary>
+      <p>{hint || "Use the sandbox personal account Buyer Bob from developer.paypal.com."}</p>
+      {email && <p>Buyer login hint: <code>{email}</code></p>}
+      <p>Stay on Sandbox. Do not use a real PayPal login.</p>
+    </details>
+  );
 }
 
 export function ShopPage() {
@@ -23,10 +34,17 @@ export function ShopPage() {
       <p className="lede">Maya's candle shop. Prices come from the database, so the pricing agent changes what checkout charges.</p>
       <div className="shop-grid">
         {products.map((product) => (
-          <Link key={product.sku} to={`/shop/${product.sku}`} className="product">
-            <div className="swatch" style={{ background: product.hue }} />
-            <strong>{product.name}</strong>
-            <div className="price">${product.price.toFixed(2)} · {product.stock} in stock</div>
+          <Link key={product.sku} to={`/shop/${product.sku}`} className="product-card">
+            <div
+              className="product-card__swatch"
+              style={{
+                background: `linear-gradient(165deg, ${product.hue} 0%, color-mix(in srgb, ${product.hue} 55%, #1c1915) 100%)`,
+              }}
+            />
+            <div className="product-card__body">
+              <strong>{product.name}</strong>
+              <div className="price">${product.price.toFixed(2)} · {product.stock} in stock</div>
+            </div>
           </Link>
         ))}
       </div>
@@ -35,19 +53,46 @@ export function ShopPage() {
 }
 
 export function ProductPage() {
-  const sku = window.location.pathname.split("/").pop() || "";
+  const { sku = "" } = useParams();
   const [product, setProduct] = useState<Product | null>(null);
   const [error, setError] = useState("");
+  const [added, setAdded] = useState(false);
   useEffect(() => { api.product(sku).then(setProduct).catch((err) => setError(err.message)); }, [sku]);
   if (error) return <main className="page"><div className="error">{error}</div></main>;
   if (!product) return <main className="page"><p className="note">Loading…</p></main>;
+  const atZero = product.stock <= 0;
   return (
     <main className="page">
-      <div className="swatch" style={{ background: product.hue, maxWidth: 420 }} />
+      <div
+        className="product-hero-swatch"
+        style={{
+          background: `linear-gradient(165deg, ${product.hue} 0%, color-mix(in srgb, ${product.hue} 50%, #1c1915) 100%)`,
+        }}
+      />
       <h1>{product.name}</h1>
       <p>{product.blurb}</p>
-      <p className="price">${product.price.toFixed(2)}</p>
-      <button className="btn primary" onClick={() => { const items = cartItems(); const found = items.find((item) => item.sku === product.sku); if (found) found.qty += 1; else items.push({ sku: product.sku, qty: 1 }); saveCart(items); }}>Add to cart</button>
+      <p className="price">${product.price.toFixed(2)} · {product.stock} in stock</p>
+      {product.priceNote && <p className="note">{product.priceNote}</p>}
+      <button
+        className="btn primary"
+        disabled={atZero}
+        title={atZero ? "Out of stock" : "Add to cart"}
+        onClick={() => {
+          const items = cartItems();
+          const found = items.find((item) => item.sku === product.sku);
+          if (found) {
+            if (found.qty >= product.stock) return;
+            found.qty += 1;
+          } else {
+            items.push({ sku: product.sku, qty: 1 });
+          }
+          saveCart(items);
+          setAdded(true);
+        }}
+      >
+        {atZero ? "Out of stock" : added ? "Added" : "Add to cart"}
+      </button>
+      <Link className="btn" to="/cart">Cart</Link>
     </main>
   );
 }
@@ -58,21 +103,65 @@ export function CartPage() {
   useEffect(() => { void api.products().then(setProducts); }, []);
   const rows = items.map((item) => ({ ...item, product: products.find((product) => product.sku === item.sku) }));
   const total = rows.reduce((sum, row) => sum + (row.product?.price ?? 0) * row.qty, 0);
+
+  function updateQty(sku: string, qty: number) {
+    const stock = products.find((p) => p.sku === sku)?.stock ?? 0;
+    const next = items
+      .map((item) => (item.sku === sku ? { ...item, qty: Math.max(0, Math.min(stock, Math.floor(qty))) } : item))
+      .filter((item) => item.qty > 0);
+    saveCart(next);
+    setItems(next);
+  }
+
+  function remove(sku: string) {
+    const next = items.filter((item) => item.sku !== sku);
+    saveCart(next);
+    setItems(next);
+  }
+
   return (
     <main className="page">
       <h1>Cart</h1>
       {!rows.length && <div className="empty">The cart is empty. <Link to="/shop">Browse the shop.</Link></div>}
       {rows.map((row) => (
-        <div key={row.sku} className="feed-row"><span>{row.qty}×</span><span>{row.product?.name ?? row.sku}</span><span>${((row.product?.price ?? 0) * row.qty).toFixed(2)}</span></div>
+        <div key={row.sku} className="feed-row cart-row">
+          <span>{row.product?.name ?? row.sku}</span>
+          <label>
+            Qty
+            <input
+              type="number"
+              min={1}
+              max={row.product?.stock ?? 1}
+              value={row.qty}
+              onChange={(e) => updateQty(row.sku, Number(e.target.value))}
+            />
+          </label>
+          <span>${((row.product?.price ?? 0) * row.qty).toFixed(2)}</span>
+          <button type="button" className="btn" onClick={() => remove(row.sku)}>Remove</button>
+        </div>
       ))}
-      {!!rows.length && <p>Total ${total.toFixed(2)}</p>}
-      {!!rows.length && <Link className="btn primary" to="/checkout">Checkout</Link>}
+      {!!rows.length && (
+        <div className="cart-footer">
+          <p className="cart-total">Total <strong>${total.toFixed(2)}</strong></p>
+          <Link className="btn primary" to="/checkout">Checkout</Link>
+        </div>
+      )}
       {!!rows.length && <button className="btn" onClick={() => { saveCart([]); setItems([]); }}>Clear</button>}
     </main>
   );
 }
 
-export function CheckoutPage({ clientId, dryRun }: { clientId?: string; dryRun?: boolean }) {
+export function CheckoutPage({
+  clientId,
+  dryRun,
+  demoBuyerHint,
+  demoBuyerEmail,
+}: {
+  clientId?: string;
+  dryRun?: boolean;
+  demoBuyerHint?: string;
+  demoBuyerEmail?: string;
+}) {
   const navigate = useNavigate();
   const items = cartItems();
   const [error, setError] = useState("");
@@ -102,6 +191,7 @@ export function CheckoutPage({ clientId, dryRun }: { clientId?: string; dryRun?:
   return (
     <main className="page">
       <h1>Checkout</h1>
+      <HowToTest hint={demoBuyerHint} email={demoBuyerEmail} />
       {dryRun && <div className="banner">PayPal sandbox credentials are not set. This checkout is labeled DRY and stays inside the demo database.</div>}
       {!items.length && <div className="empty">Nothing to pay for.</div>}
       {!!items.length && livePayPal && <PayPalSlot clientId={clientId!} items={items} onDone={(id) => { saveCart([]); navigate(`/checkout/success?order=${id}`); }} onError={setError} />}
@@ -144,7 +234,6 @@ function PayPalSlot({ clientId, items, onDone, onError }: { clientId: string; it
         const button = document.querySelector("paypal-button");
         button?.addEventListener("click", () => {
           setStatus("opening");
-          // SDK v6 needs Promise<{ orderId: string }>, not a bare id string.
           const orderPromise = api.checkout(items).then((order) => ({ orderId: String(order.id) }));
           void session
             .start({ presentationMode: "auto" }, orderPromise)
@@ -183,6 +272,42 @@ interface Sdk {
 }
 
 export function SuccessPage() {
-  const id = new URLSearchParams(window.location.search).get("order");
-  return <main className="page"><h1>Paid</h1><p>Order {id} is captured. It shows up in the control room, and a PayPal webhook will confirm it when credentials are live.</p><Link className="btn primary" to="/control">Open the control room</Link></main>;
+  const [params] = useSearchParams();
+  const id = params.get("order");
+  const [order, setOrder] = useState<(Awaited<ReturnType<typeof api.order>>) | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!id) return;
+    void api.order(id).then(setOrder).catch((err) => setError(err.message));
+    const timer = setInterval(() => {
+      void api.order(id).then(setOrder).catch(() => undefined);
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [id]);
+
+  return (
+    <main className="page">
+      <h1>Paid</h1>
+      {error && <div className="error">{error}</div>}
+      {!order && !error && <p className="note">Loading order…</p>}
+      {order && (
+        <div className="success-card">
+          <p>
+            <span className={`badge ${order.live ? "confirmed" : "dry"}`}>{order.live ? "LIVE" : "DRY"}</span>
+            {order.awaitingWebhook && <span className="badge pending_approval">captured, awaiting webhook</span>}
+            {order.confirmedAt && <span className="badge confirmed">confirmed</span>}
+          </p>
+          <p><strong>Order</strong> {order.id}</p>
+          <p><strong>PayPal order</strong> <code>{order.paypalOrderId}</code></p>
+          <p><strong>Capture</strong> <code>{order.paypalCaptureId}</code></p>
+          <p className="note">Total ${order.total.toFixed(2)}</p>
+          <Link className="btn primary" to={`/control?tab=orders&focus=${encodeURIComponent(order.id)}`}>
+            Open in control room
+          </Link>
+        </div>
+      )}
+      {!order && <Link className="btn primary" to="/control">Open the control room</Link>}
+    </main>
+  );
 }

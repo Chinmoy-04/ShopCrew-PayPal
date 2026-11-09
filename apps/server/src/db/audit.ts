@@ -7,7 +7,7 @@ export function nowIso(): string {
 }
 
 export async function writeAudit(entry: {
-  actor: "agent" | "owner" | "system" | "paypal";
+  actor: "agent" | "owner" | "system" | "paypal" | "studio-ai";
   agent?: string | null;
   event: string;
   proposalId?: string | null;

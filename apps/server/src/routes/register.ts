@@ -2,26 +2,41 @@ import { and, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { money } from "@shopcrew/shared";
 import { settings } from "../config.js";
-import { propose } from "../agents/gate.js";
+import { propose, spentToday } from "../agents/gate.js";
 import { completeObject } from "../agents/llm.js";
 import { nowIso, writeAudit } from "../db/audit.js";
-import { db } from "../db/client.js";
+import { db, exportEmbeddedDatabase } from "../db/client.js";
 import { resetDatabase } from "../db/seed.js";
-import { competitorPrices, customers, orderItems, orders, policies, products, proposals, salesDaily, simState } from "../db/schema.js";
+import {
+  checkoutDrafts,
+  customers,
+  orderItems,
+  orders,
+  policies,
+  priceHistory,
+  products,
+  proposals,
+  simState,
+} from "../db/schema.js";
 import { listMessageViews, listOrderViews, listProposalViews, proposalView } from "../db/views.js";
 import { executeProposal } from "../executor/executor.js";
 import { rollbackProposal } from "../executor/rollback.js";
 import { bus } from "../bus/events.js";
-import { olsElasticity } from "../ml/elasticity.js";
-import { holtWinters } from "../ml/holtWinters.js";
-import { reorderPlan } from "../ml/reorder.js";
+import { autoRegisterLiveCapture, readCapturePool, writeCapturePool } from "../paypal/capturePool.js";
 import { paypal } from "../paypal/rest.js";
 import { applyPayPalEvent } from "../paypal/events.js";
 import { readWebhookHeaders, verifyWebhookSignature } from "../paypal/webhookVerify.js";
+import { evaluatePolicy } from "../policy/engine.js";
 import { advanceDay, setAutorun, setPaused } from "../sim/clock.js";
 import { explainProposal } from "../agents/explain.js";
+import { buildInsightsPayload, inventoryRows, kpis, refundAnomalies } from "../insights/buildInsights.js";
+import { registerStudioAiRoutes } from "./studioAi.js";
+import { registerWorkflowRoutes } from "./workflows.js";
+import { ruleGrid } from "./nlGrid.js";
+import { clientIp, enforcePublicResetCooldown, POLICY_CLAMP, rateLimitSimAdvance } from "./demoLimits.js";
 
-const drafts = new Map<string, { lines: { productId: string; sku: string; qty: number; unitPrice: number }[]; total: number }>();
+type DraftLine = { productId: string; sku: string; qty: number; unitPrice: number; name?: string };
+
 
 function requireAdmin(header: string | undefined) {
   if (header !== settings.adminToken()) {
@@ -43,44 +58,24 @@ export async function registerRoutes(app: FastifyInstance) {
     llmProvider: settings.llmProvider(),
     studioAiEnabled: Boolean(settings.studioOpenAiKey()),
     studioAiModels: settings.studioOpenAiModels(),
+    demoBuyerEmail: process.env.DEMO_BUYER_EMAIL || "",
+    demoBuyerHint: process.env.DEMO_BUYER_HINT || "Use the sandbox personal account Buyer Bob from developer.paypal.com",
+    demoPublicReset: settings.demoPublicReset(),
   }));
 
-  // AG Studio AI assistant proxy — browser adapter POSTs here; key never leaves the server.
-  app.post("/api/studio/ai/responses", async (req, reply) => {
-    const apiKey = settings.studioOpenAiKey();
-    if (!apiKey) {
-      return reply.code(503).send({
-        error: { message: "Studio AI is not configured. Set AG_STUDIO_OPENAI_API_KEY or OPENAI_API_KEY in .env." },
-      });
-    }
-    const models = settings.studioOpenAiModels();
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const model = typeof body.model === "string" && body.model ? body.model : models[0];
-    if (!models.includes(model)) {
-      return reply.code(400).send({
-        error: { message: `Model "${model}" is not enabled. Allowed: ${models.join(", ")}` },
-      });
-    }
+  await registerStudioAiRoutes(app);
+  await registerWorkflowRoutes(app);
 
-    const upstream = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({ ...body, model, max_output_tokens: 16_000 }),
-    });
-
-    const contentType = upstream.headers.get("Content-Type") ?? "application/json";
-    reply.code(upstream.status).header("Cache-Control", "no-store").type(contentType);
-
-    if (!upstream.body) {
-      return reply.send(await upstream.text());
-    }
-
-    // Stream SSE (and non-stream JSON) through without buffering the whole payload.
-    const { Readable } = await import("node:stream");
-    return reply.send(Readable.fromWeb(upstream.body as import("node:stream/web").ReadableStream));
+  app.get("/api/admin/backup/database", async (req, reply) => {
+    requireAdmin(req.headers["x-admin-token"] as string | undefined);
+    const archive = await exportEmbeddedDatabase();
+    return reply.header("Cache-Control", "no-store")
+      .header("Content-Disposition", 'attachment; filename="shopcrew-pglite.tar.gz"')
+      .type("application/gzip").send(archive);
+  });
+  app.get("/api/admin/backup/capture-pool", async (req, reply) => {
+    requireAdmin(req.headers["x-admin-token"] as string | undefined);
+    return reply.header("Cache-Control", "no-store").send(readCapturePool());
   });
 
   app.get("/api/products", async () => db().select().from(products));
@@ -88,7 +83,18 @@ export async function registerRoutes(app: FastifyInstance) {
     const sku = (req.params as { sku: string }).sku;
     const [product] = await db().select().from(products).where(eq(products.sku, sku));
     if (!product) throw Object.assign(new Error("Product not found"), { statusCode: 404 });
-    return product;
+    const history = await db().select().from(priceHistory).where(eq(priceHistory.productId, product.id));
+    const latest = history.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0];
+    return {
+      ...product,
+      priceNote: latest
+        ? latest.changedBy === "seed"
+          ? "Starting price"
+          : `Price set by ${latest.changedBy} agent, day ${latest.simDay}`
+        : null,
+      priceSetBy: latest?.changedBy ?? null,
+      priceSimDay: latest?.simDay ?? null,
+    };
   });
 
   app.patch("/api/products/:sku", async (req) => {
@@ -102,15 +108,28 @@ export async function registerRoutes(app: FastifyInstance) {
 
   app.post("/api/checkout/orders", async (req) => {
     const body = req.body as { items: { sku: string; qty: number }[] };
+    if (!Array.isArray(body.items) || !body.items.length) {
+      throw Object.assign(new Error("Cart is empty"), { statusCode: 400 });
+    }
     const catalog = await db().select().from(products);
-    const lines = body.items.map((item) => {
+    const lines: DraftLine[] = body.items.map((item) => {
       const product = catalog.find((row) => row.sku === item.sku);
       if (!product) throw Object.assign(new Error(`Unknown SKU ${item.sku}`), { statusCode: 400 });
-      return { productId: product.id, sku: product.sku, name: product.name, qty: item.qty, unitPrice: product.price };
+      const qty = Number(item.qty);
+      if (!Number.isInteger(qty) || qty < 1 || qty > product.stock) {
+        throw Object.assign(new Error(`Invalid qty for ${item.sku} (must be an integer from 1 to ${product.stock})`), { statusCode: 400 });
+      }
+      return { productId: product.id, sku: product.sku, name: product.name, qty, unitPrice: product.price };
     });
     const total = money(lines.reduce((sum, line) => sum + line.unitPrice * line.qty, 0));
     if (!paypal.configured()) {
-      const localId = await saveOrder({ paypalOrderId: `DRY-ORD-${Date.now()}`, captureId: `DRY-CAP-CHK${Date.now()}`.slice(0, 22), total, lines });
+      const localId = await saveOrder({
+        paypalOrderId: `DRY-ORD-${Date.now()}`,
+        captureId: `DRY-CAP-CHK${Date.now()}`.slice(0, 22),
+        total,
+        lines,
+        dry: true,
+      });
       return { id: localId, dryRun: true };
     }
     const created = (await paypal.request("POST", "/v2/checkout/orders", {
@@ -122,20 +141,35 @@ export async function registerRoutes(app: FastifyInstance) {
           breakdown: { item_total: { currency_code: "USD", value: total.toFixed(2) } },
         },
         items: lines.map((line) => ({
-          name: line.name,
+          name: line.name ?? line.sku,
           quantity: String(line.qty),
           unit_amount: { currency_code: "USD", value: line.unitPrice.toFixed(2) },
         })),
       }],
     })) as { id: string };
-    drafts.set(created.id, { lines, total });
+    await db().delete(checkoutDrafts).where(eq(checkoutDrafts.paypalOrderId, created.id));
+    await db().insert(checkoutDrafts).values({
+      paypalOrderId: created.id,
+      linesJson: lines,
+      total,
+      createdAt: nowIso(),
+    });
     return { id: created.id, dryRun: false };
   });
 
   app.post("/api/checkout/orders/:id/capture", async (req) => {
     const id = (req.params as { id: string }).id;
     if (id.startsWith("ord-") || id.startsWith("syn-")) return { id, status: "CAPTURED", dryRun: true };
-    const draft = drafts.get(id);
+
+    const existing = await db().select().from(orders).where(eq(orders.paypalOrderId, id));
+    if (existing[0]) {
+      return { id: existing[0].id, paypalOrderId: id, captureId: existing[0].paypalCaptureId, status: existing[0].status, dryRun: false };
+    }
+
+    const [draftRow] = await db().select().from(checkoutDrafts).where(eq(checkoutDrafts.paypalOrderId, id));
+    const draftLines = (draftRow?.linesJson as DraftLine[] | undefined) ?? [];
+    const draftTotal = draftRow?.total;
+
     const captured = (await paypal.request("POST", `/v2/checkout/orders/${id}/capture`, {}, `capture-${id}`)) as {
       purchase_units?: { payments?: { captures?: { id: string; amount?: { value: string } }[] } }[];
       payer?: { email_address?: string; name?: { given_name?: string; surname?: string }; payer_id?: string };
@@ -144,19 +178,37 @@ export async function registerRoutes(app: FastifyInstance) {
     const given = captured.payer?.name?.given_name?.trim() ?? "";
     const surname = captured.payer?.name?.surname?.trim() ?? "";
     const payerName = [given, surname].filter(Boolean).join(" ") || "Sandbox buyer";
+
+    const again = await db().select().from(orders).where(eq(orders.paypalOrderId, id));
+    if (again[0]) {
+      return { id: again[0].id, paypalOrderId: id, captureId: again[0].paypalCaptureId, status: again[0].status, dryRun: false };
+    }
+
     const localId = await saveOrder({
       paypalOrderId: id,
       captureId: capture?.id ?? "",
-      total: draft?.total ?? Number(capture?.amount?.value ?? 0),
-      lines: draft?.lines ?? [],
+      total: draftTotal ?? Number(capture?.amount?.value ?? 0),
+      lines: draftLines,
       customerName: payerName,
       customerEmail: captured.payer?.email_address ?? `payer-${captured.payer?.payer_id ?? id}@sandbox.paypal`,
+      dry: false,
     });
-    drafts.delete(id);
-    return { id: localId, paypalOrderId: id, captureId: capture?.id, status: "CAPTURED" };
+    if (draftRow) await db().delete(checkoutDrafts).where(eq(checkoutDrafts.paypalOrderId, id));
+    return { id: localId, paypalOrderId: id, captureId: capture?.id, status: "CAPTURED", dryRun: false };
   });
 
   app.get("/api/orders", async () => listOrderViews());
+  app.get("/api/orders/:id", async (req) => {
+    const id = (req.params as { id: string }).id;
+    const views = await listOrderViews();
+    const order = views.find((row) => row.id === id);
+    if (!order) throw Object.assign(new Error("Order not found"), { statusCode: 404 });
+    return {
+      ...order,
+      live: Boolean(order.paypalCaptureId && !String(order.paypalCaptureId).startsWith("DRY")),
+      awaitingWebhook: Boolean(order.paypalCaptureId && !String(order.paypalCaptureId).startsWith("DRY") && !order.confirmedAt),
+    };
+  });
   app.get("/api/proposals", async () => listProposalViews());
   app.get("/api/proposals/:id", async (req) => proposalView((req.params as { id: string }).id));
 
@@ -166,11 +218,57 @@ export async function registerRoutes(app: FastifyInstance) {
     const [row] = await db().select().from(proposals).where(eq(proposals.id, id));
     if (!row || row.status !== "pending_approval") throw Object.assign(new Error("Only a pending proposal can be edited"), { statusCode: 409 });
     const amount = money(Number(body.amount));
+    const [sim] = await db().select().from(simState);
+    const [policy] = await db().select().from(policies).where(eq(policies.agent, row.agent));
+    const extra = (policy?.extraJson ?? {}) as { autoApprovePct?: number };
+    const priorInputs = (row.inputsJson ?? {}) as Record<string, unknown> & {
+      remaining?: number;
+      customerRefunds30d?: number;
+      suspicious?: boolean;
+    };
+    let orderTotal: number | undefined;
+    let refundedAlready: number | undefined;
+    if (row.type === "refund") {
+      const [order] = await db().select().from(orders).where(eq(orders.id, row.targetRef));
+      if (order) {
+        orderTotal = order.total;
+        refundedAlready = order.refundedTotal;
+      } else if (priorInputs.remaining != null) {
+        orderTotal = Number(priorInputs.remaining) + Number(row.amount ?? 0);
+        refundedAlready = 0;
+      }
+    }
+    const policyResult = evaluatePolicy({
+      agent: row.agent as "cs" | "inventory" | "pricing" | "supplier" | "orchestrator",
+      type: (row.type === "discount" ? "price_change" : row.type) as "refund" | "reply" | "payout" | "price_change" | "purchase_order",
+      amount: row.type === "price_change" || row.type === "reply" || row.type === "discount" ? 0 : amount,
+      pausedAll: sim?.pausedAll ?? false,
+      agentEnabled: policy?.enabled ?? true,
+      autoApproveMax: policy?.autoApproveMax ?? 0,
+      dailyBudget: policy?.dailyBudget ?? 0,
+      spentToday: await spentToday(row.agent, sim?.simDay ?? 0),
+      maxPctOfOrder: policy?.maxPctOfOrder ?? 1,
+      maxPriceChangePct: policy?.maxPriceChangePct ?? 20,
+      minMarginPct: policy?.minMarginPct ?? 0,
+      autoApprovePct: extra.autoApprovePct ?? 5,
+      orderTotal,
+      refundedAlready,
+      customerRefunds30d: Number(priorInputs.customerRefunds30d ?? 0),
+      suspicious: Boolean(priorInputs.suspicious),
+    });
+    if (policyResult.decision === "blocked") {
+      throw Object.assign(new Error(policyResult.reasons.join(" ") || "Edit blocked by policy"), { statusCode: 422 });
+    }
     const args = { ...(row.toolArgsJson as Record<string, unknown>) };
     if (row.type === "refund") args.amount = { currency_code: "USD", value: amount.toFixed(2) };
     if (row.type === "price_change") args.new_price = amount;
     if (row.type === "payout") args.amount = amount.toFixed(2);
-    await db().update(proposals).set({ amount, editedArgsJson: args }).where(eq(proposals.id, id));
+    await db().update(proposals).set({
+      amount,
+      editedArgsJson: args,
+      policyResultJson: { ...policyResult, ...(orderTotal != null ? { orderTotal, refundedAlready } : {}), editedByOwner: true },
+      inputsJson: { ...priorInputs, editedByOwner: true },
+    }).where(eq(proposals.id, id));
     await writeAudit({ actor: "owner", agent: row.agent, event: "proposal.edited", proposalId: id, correlationId: row.correlationId, message: `Owner edited the amount to $${amount.toFixed(2)}.` });
     const view = await proposalView(id);
     bus.emit({ type: "proposal.upserted", proposal: view });
@@ -181,6 +279,15 @@ export async function registerRoutes(app: FastifyInstance) {
     const id = (req.params as { id: string }).id;
     const [row] = await db().select().from(proposals).where(and(eq(proposals.id, id), eq(proposals.status, "pending_approval")));
     if (!row) throw Object.assign(new Error("Proposal is not waiting for approval"), { statusCode: 409 });
+    const finalAmount = money(Number(row.amount ?? 0));
+    await writeAudit({
+      actor: "owner",
+      agent: row.agent,
+      event: "proposal.approved",
+      proposalId: id,
+      correlationId: row.correlationId,
+      message: `Owner approved final amount $${finalAmount.toFixed(2)}.`,
+    });
     await db().update(proposals).set({ status: "approved", decidedBy: "owner", decidedAt: nowIso() }).where(eq(proposals.id, id));
     await executeProposal(id, "owner");
     return proposalView(id);
@@ -227,6 +334,7 @@ export async function registerRoutes(app: FastifyInstance) {
       const product = catalog.find((item) => item.id === po?.productId);
       return {
         ...row,
+        confirmedAt: row.confirmedAt,
         sku: product?.sku ?? "",
         supplierId: po?.supplierId ?? "",
         negotiation: po?.negotiationJson ?? null,
@@ -244,6 +352,12 @@ export async function registerRoutes(app: FastifyInstance) {
   app.put("/api/policies/:agent", async (req) => {
     const agent = (req.params as { agent: string }).agent;
     const body = req.body as Record<string, number | boolean>;
+    if (body.autoApproveMax !== undefined && Number(body.autoApproveMax) > POLICY_CLAMP.autoApproveMax) {
+      throw Object.assign(new Error(`autoApproveMax must be ≤ ${POLICY_CLAMP.autoApproveMax}`), { statusCode: 422 });
+    }
+    if (body.dailyBudget !== undefined && Number(body.dailyBudget) > POLICY_CLAMP.dailyBudget) {
+      throw Object.assign(new Error(`dailyBudget must be ≤ ${POLICY_CLAMP.dailyBudget}`), { statusCode: 422 });
+    }
     await db().update(policies).set({
       enabled: body.enabled === undefined ? undefined : Boolean(body.enabled),
       autoApproveMax: body.autoApproveMax === undefined ? undefined : Number(body.autoApproveMax),
@@ -259,7 +373,10 @@ export async function registerRoutes(app: FastifyInstance) {
   });
 
   app.get("/api/sim", async () => (await db().select().from(simState))[0]);
-  app.post("/api/sim/advance", async () => advanceDay());
+  app.post("/api/sim/advance", async (req) => {
+    rateLimitSimAdvance(clientIp(req));
+    return advanceDay();
+  });
   app.post("/api/sim/autorun", async (req) => {
     const enabled = Boolean((req.body as { enabled?: boolean }).enabled);
     await setAutorun(enabled);
@@ -270,7 +387,11 @@ export async function registerRoutes(app: FastifyInstance) {
     return (await db().select().from(simState))[0];
   });
   app.post("/api/sim/reset", async (req) => {
-    requireAdmin(req.headers["x-admin-token"] as string | undefined);
+    if (settings.demoPublicReset()) {
+      enforcePublicResetCooldown(clientIp(req));
+    } else {
+      requireAdmin(req.headers["x-admin-token"] as string | undefined);
+    }
     await resetDatabase();
     bus.emit({ type: "sim.reset" });
     return (await db().select().from(simState))[0];
@@ -282,9 +403,47 @@ export async function registerRoutes(app: FastifyInstance) {
     const body = req.body as { query: string; grid?: string; state?: unknown; schema?: unknown };
     const [sim] = await db().select().from(simState);
     const fallback = ruleGrid(body.query, sim?.simDay ?? 0, body.grid);
-    const llm = await completeObject( "Turn a shop-owner sentence into an AG Grid state patch.", body.query, body.schema ?? { type: "object" }, null as null);
-    if (llm && typeof llm === "object" && "gridState" in (llm as object)) {
-      return { ...fallback, ...(llm as object), explanation: (llm as { explanation?: string }).explanation ?? fallback.explanation };
+    const knownColumns = new Set([
+      "status", "type", "summary", "amount", "confidenceModel", "riskScore", "createdAt", "agent",
+      "targetRef", "policyResult", "decidedBy", "reason", "simDay", "paypalRef", "id", "sku", "customer",
+    ]);
+    const llm = await completeObject(
+      "Turn a shop-owner sentence into an AG Grid state patch. Prefer filterModel and rowGroupCols. Only use known column ids.",
+      body.query,
+      body.schema ?? {
+        type: "object",
+        properties: {
+          explanation: { type: "string" },
+          gridState: { type: "object" },
+          simple: {
+            type: "object",
+            properties: {
+              filterModel: { type: "object" },
+              rowGroupCols: { type: "array", items: { type: "string" } },
+            },
+          },
+        },
+      },
+      null as null,
+    );
+    if (llm && typeof llm === "object") {
+      const patch = llm as {
+        explanation?: string;
+        gridState?: { filter?: { filterModel?: Record<string, unknown> }; rowGroup?: { groupColIds?: string[] } };
+        simple?: { filterModel?: Record<string, unknown>; rowGroupCols?: string[] };
+      };
+      const filterModel = { ...(fallback.simple.filterModel), ...(patch.simple?.filterModel ?? {}) };
+      for (const key of Object.keys(filterModel)) {
+        if (!knownColumns.has(key)) delete filterModel[key];
+      }
+      const rowGroupCols = (patch.simple?.rowGroupCols ?? fallback.simple.rowGroupCols).filter((col) => knownColumns.has(col));
+      return {
+        ...fallback,
+        explanation: patch.explanation ?? fallback.explanation,
+        simple: { filterModel, rowGroupCols },
+        gridState: patch.gridState ?? null,
+        propertiesToIgnore: [],
+      };
     }
     return fallback;
   });
@@ -372,14 +531,11 @@ export async function registerRoutes(app: FastifyInstance) {
     }
     const pool = {
       orders: [
-        { id: "ord-large", paypalOrderId: large.paypalOrderId, paypalCaptureId: large.paypalCaptureId },
-        { id: "ord-small", paypalOrderId: small.paypalOrderId, paypalCaptureId: small.paypalCaptureId },
+        { id: "ord-large", paypalOrderId: large.paypalOrderId, paypalCaptureId: large.paypalCaptureId, total: large.total, refunded: 0 },
+        { id: "ord-small", paypalOrderId: small.paypalOrderId, paypalCaptureId: small.paypalCaptureId, total: small.total, refunded: 0 },
       ],
     };
-    const fs = await import("node:fs");
-    const path = await import("node:path");
-    const { repoRoot } = await import("../config.js");
-    fs.writeFileSync(path.join(repoRoot(), "fixtures", "capture-pool.json"), JSON.stringify(pool, null, 2));
+    writeCapturePool(pool);
     await resetDatabase();
     bus.emit({ type: "sim.reset" });
     return { ok: true, mapping: pool.orders };
@@ -405,31 +561,11 @@ export async function registerRoutes(app: FastifyInstance) {
     });
   });
 
-  app.get("/api/insights", async () => {
-    const { payouts } = await import("../db/schema.js");
-    const { purchaseOrders } = await import("../db/schema.js");
-    const payoutRows = await db().select().from(payouts);
-    const pos = await db().select().from(purchaseOrders);
-    const catalog = await db().select().from(products);
-    return {
-      kpis: await kpis(),
-      policies: await db().select().from(policies),
-      proposals: await listProposalViews(),
-      orders: await listOrderViews(),
-      inventory: await inventoryRows(),
-      payouts: payoutRows.map((row) => {
-        const po = pos.find((item) => item.id === row.purchaseOrderId);
-        const product = catalog.find((item) => item.id === po?.productId);
-        return {
-          id: row.id,
-          amount: row.amount,
-          status: row.status,
-          receiver: row.receiver,
-          sku: product?.sku ?? "",
-          createdAt: row.createdAt,
-        };
-      }),
-    };
+  app.get("/api/insights", async () => buildInsightsPayload());
+
+  app.get("/api/insights/anomalies", async () => {
+    const payload = await buildInsightsPayload();
+    return refundAnomalies(payload.refunds.map((r) => ({ day: r.day, amount: r.amount })), 2);
   });
 }
 
@@ -440,11 +576,12 @@ async function saveOrder(input: {
   lines: { productId: string; qty: number; unitPrice: number }[];
   customerName?: string;
   customerEmail?: string;
+  dry?: boolean;
 }) {
   const database = db();
   const [sim] = await database.select().from(simState);
   const id = `ord-live-${Date.now()}`;
-  const email = input.customerEmail ?? "sandbox-buyer@shopcrew.test";
+  const email = input.customerEmail ?? "sandbox-buyer@shopcrew.example";
   const name = input.customerName ?? "Sandbox buyer";
   const existing = await database.select().from(customers).where(eq(customers.email, email));
   let customerId = existing[0]?.id;
@@ -454,6 +591,7 @@ async function saveOrder(input: {
   } else if (name && existing[0] && existing[0].name !== name) {
     await database.update(customers).set({ name }).where(eq(customers.id, customerId));
   }
+  const dry = Boolean(input.dry || input.captureId.startsWith("DRY"));
   await database.insert(orders).values({
     id,
     customerId,
@@ -466,6 +604,7 @@ async function saveOrder(input: {
     currency: "USD",
     simDay: sim?.simDay ?? 0,
     createdAt: nowIso(),
+    confirmedAt: dry ? nowIso() : null,
   });
   if (input.lines.length) {
     await database.insert(orderItems).values(input.lines.map((line, index) => ({ id: `${id}-${index}`, orderId: id, productId: line.productId, qty: line.qty, unitPrice: line.unitPrice })));
@@ -474,91 +613,14 @@ async function saveOrder(input: {
       if (product) await database.update(products).set({ stock: Math.max(0, product.stock - line.qty) }).where(eq(products.id, product.id));
     }
   }
+  if (!dry && input.captureId) {
+    autoRegisterLiveCapture({
+      paypalOrderId: input.paypalOrderId,
+      paypalCaptureId: input.captureId,
+      total: input.total,
+    });
+  }
   const [order] = await listOrderViews().then((rows) => rows.filter((row) => row.id === id));
   bus.emit({ type: "order.upserted", order });
   return id;
-}
-
-async function inventoryRows() {
-  const catalog = await db().select().from(products);
-  const sales = await db().select().from(salesDaily);
-  const rivals = await db().select().from(competitorPrices);
-  return catalog.map((product) => {
-    const series = sales.filter((row) => row.productId === product.id).sort((a, b) => a.simDay - b.simDay);
-    const hw = holtWinters(series.map((row) => row.units));
-    const fit = olsElasticity(series.map((row) => ({ price: row.price, units: row.units })));
-    const daily = hw.forecast.slice(0, 7).reduce((sum, value) => sum + value, 0) / 7;
-    const plan = reorderPlan({ stock: product.stock, daily, sigma: hw.sigma, leadTimeDays: product.leadTimeDays });
-    const latest = Math.max(...rivals.filter((row) => row.productId === product.id).map((row) => row.simDay), -999);
-    const competitorMin = Math.min(...rivals.filter((row) => row.productId === product.id && row.simDay === latest).map((row) => row.price));
-    return {
-      id: product.id,
-      sku: product.sku,
-      name: product.name,
-      stock: product.stock,
-      daysOfCover: Number(plan.daysOfCover.toFixed(1)),
-      forecast: Number(daily.toFixed(2)),
-      lower: Number((hw.lower[0] ?? 0).toFixed(2)),
-      upper: Number((hw.upper[0] ?? 0).toFixed(2)),
-      reorderPoint: Number(plan.reorderPoint.toFixed(1)),
-      mape: Number(hw.mape.toFixed(3)),
-      price: product.price,
-      cost: product.cost,
-      competitorMin: Number.isFinite(competitorMin) ? competitorMin : null,
-      elasticity: Number(fit.elasticity.toFixed(2)),
-      r2: Number(fit.r2.toFixed(2)),
-      leadTimeDays: product.leadTimeDays,
-      spark: series.slice(-28).map((row) => row.units),
-      hue: product.hue,
-    };
-  });
-}
-
-async function kpis() {
-  const [sim] = await db().select().from(simState);
-  const day = sim?.simDay ?? 0;
-  const allOrders = await db().select().from(orders);
-  const proposalRows = await db().select().from(proposals);
-  const todayOrders = allOrders.filter((row) => row.simDay === day);
-  const revenueToday = todayOrders.reduce((sum, row) => sum + row.total, 0);
-  const decisions = proposalRows.filter((row) => row.simDay === day);
-  const autoApproved = decisions.filter((row) => row.decidedBy === "policy" && ["confirmed", "submitted", "auto_approved", "executing"].includes(row.status)).length;
-  const manualApproved = decisions.filter((row) => row.decidedBy === "owner").length;
-  const pending = decisions.filter((row) => row.status === "pending_approval").length;
-  const spend = decisions.filter((row) => ["payout", "refund"].includes(row.type) && ["confirmed", "submitted", "executing", "auto_approved"].includes(row.status)).reduce((sum, row) => sum + (row.amount ?? 0), 0);
-  const policyRows = await db().select().from(policies);
-  const budget = policyRows.reduce((sum, row) => sum + row.dailyBudget, 0);
-  return {
-    simDay: day,
-    revenueToday: money(revenueToday),
-    decisions: decisions.length,
-    autoApproved,
-    manualApproved,
-    pending,
-    spendToday: money(spend),
-    budget,
-    hoursSaved: Number((decisions.length * 0.15).toFixed(1)),
-    summary: sim?.lastSummary ?? "",
-    paused: sim?.pausedAll ?? false,
-  };
-}
-
-function ruleGrid(query: string, simDay: number, current?: string) {
-  const q = query.toLowerCase();
-  const filterModel: Record<string, unknown> = {};
-  if (q.includes("refund")) filterModel.type = { filterType: "text", type: "equals", filter: "refund" };
-  const over = q.match(/over \$?(\d+(?:\.\d+)?)/);
-  if (over) filterModel.amount = { filterType: "number", type: "greaterThan", filter: Number(over[1]) };
-  if (q.includes("approved by me") || q.includes("i approved")) filterModel.decidedBy = { filterType: "text", type: "equals", filter: "owner" };
-  if (q.includes("pending")) filterModel.status = { filterType: "text", type: "equals", filter: "pending_approval" };
-  if (q.includes("today")) filterModel.simDay = { filterType: "number", type: "equals", filter: simDay };
-  const rowGroupCols = q.includes("reason") ? ["reason"] : q.includes("agent") ? ["agent"] : [];
-  const grid = q.includes("payout") ? "payouts" : q.includes("inventory") || q.includes("stock") ? "inventory" : q.includes("order") ? "orders" : q.includes("audit") ? "audit" : current || "decisions";
-  return {
-    grid,
-    explanation: `Filtered ${grid}${over ? ` to amounts over $${over[1]}` : ""}${q.includes("refund") ? " to refunds" : ""}.`,
-    simple: { filterModel, rowGroupCols },
-    gridState: null,
-    propertiesToIgnore: [],
-  };
 }

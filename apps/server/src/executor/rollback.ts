@@ -11,8 +11,9 @@ export async function rollbackProposal(id: string): Promise<{ status: string; me
   const database = db();
   const [row] = await database.select().from(proposals).where(eq(proposals.id, id));
   if (!row) throw new Error("Proposal not found");
+
   if (row.type === "refund") {
-    await database.update(proposals).set({ status: "rollback_failed" }).where(eq(proposals.id, id));
+    // Do not overwrite confirmed/submitted status — refunds are irreversible.
     await writeAudit({
       actor: "owner",
       agent: row.agent,
@@ -24,6 +25,7 @@ export async function rollbackProposal(id: string): Promise<{ status: string; me
     bus.emit({ type: "proposal.upserted", proposal: await proposalView(id) });
     return { status: "rollback_failed", message: "Refunds cannot be reversed." };
   }
+
   if (row.type === "price_change") {
     const args = (row.toolArgsJson ?? {}) as { sku?: string };
     const [product] = await database.select().from(products).where(eq(products.sku, args.sku ?? row.targetRef));
@@ -47,12 +49,19 @@ export async function rollbackProposal(id: string): Promise<{ status: string; me
     bus.emit({ type: "inventory.changed", sku: product.sku });
     return { status: "rolled_back", message: `Price restored to $${restored.toFixed(2)}.` };
   }
+
   if (row.type === "payout" || row.type === "purchase_order") {
     const [payout] = await database.select().from(payouts).where(eq(payouts.proposalId, id));
     if (!payout) throw new Error("No payout to roll back");
     if (payout.status !== "UNCLAIMED") {
-      await database.update(proposals).set({ status: "rollback_failed" }).where(eq(proposals.id, id));
-      await writeAudit({ actor: "owner", agent: row.agent, event: "rollback.failed", proposalId: id, correlationId: row.correlationId, message: `Payout is ${payout.status}. Only UNCLAIMED items can be cancelled.` });
+      await writeAudit({
+        actor: "owner",
+        agent: row.agent,
+        event: "rollback.failed",
+        proposalId: id,
+        correlationId: row.correlationId,
+        message: `Payout is ${payout.status}. Only UNCLAIMED items can be cancelled.`,
+      });
       bus.emit({ type: "proposal.upserted", proposal: await proposalView(id) });
       return { status: "rollback_failed", message: "Only an unclaimed payout can be cancelled." };
     }
@@ -68,6 +77,7 @@ export async function rollbackProposal(id: string): Promise<{ status: string; me
     bus.emit({ type: "proposal.upserted", proposal: await proposalView(id) });
     return { status: "rolled_back", message: "Unclaimed payout cancelled." };
   }
+
   await database.update(proposals).set({ status: "rolled_back" }).where(eq(proposals.id, id));
   bus.emit({ type: "proposal.upserted", proposal: await proposalView(id) });
   return { status: "rolled_back", message: "Marked rolled back." };

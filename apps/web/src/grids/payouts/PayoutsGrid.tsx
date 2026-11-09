@@ -4,14 +4,25 @@ import { AgGridReact } from "ag-grid-react";
 import { api, type PayoutRow } from "../../api/client";
 import { NegotiationTimeline } from "../../components/NegotiationTimeline";
 import { onLive } from "../../hooks/useLiveEvents";
+import { formatMoney, PayPalRef } from "../renderers";
 import { gridTheme } from "../theme";
+import { useGridState } from "../useGridState";
 
 function PayoutDetail(props: { data: PayoutRow }) {
   const row = props.data;
+  const timeline = [
+    { label: "Created", at: row.createdAt },
+    ...(row.status ? [{ label: row.status, at: (row as PayoutRow & { confirmedAt?: string }).confirmedAt ?? row.createdAt }] : []),
+  ];
   return (
     <div className="detail">
       <p><strong>Payout to:</strong> {row.receiver} — <strong>${Number(row.amount).toFixed(2)}</strong> — {row.status}</p>
       <p className="note">Sender batch: {row.senderBatchId} | Payout item: {row.payoutItemId ?? "—"}</p>
+      <ul className="status-timeline">
+        {timeline.map((item) => (
+          <li key={item.label}><strong>{item.label}</strong>{item.at && <span className="note"> · {new Date(item.at).toLocaleString()}</span>}</li>
+        ))}
+      </ul>
       {row.negotiation?.length && row.qty != null && row.quote != null ? (
         <NegotiationTimeline transcript={row.negotiation} quote={row.quote} qty={row.qty} />
       ) : <p className="note">No negotiation log for this payout.</p>}
@@ -19,18 +30,19 @@ function PayoutDetail(props: { data: PayoutRow }) {
   );
 }
 
-export function PayoutsGrid() {
+export function PayoutsGrid({ onGrid }: { onGrid?: (api: GridApi) => void } = {}) {
   const [rows, setRows] = useState<PayoutRow[]>([]);
   const apiRef = useRef<GridApi | null>(null);
+  const gridState = useGridState("payouts");
   const columnDefs: ColDef<PayoutRow>[] = [
     { field: "createdAt", valueFormatter: (p) => (p.value ? new Date(p.value).toLocaleTimeString() : "") },
     { field: "sku" },
     { field: "receiver", flex: 1 },
-    { field: "amount", valueFormatter: (p) => `$${Number(p.value).toFixed(2)}` },
+    { field: "amount", valueFormatter: (p) => formatMoney(Number(p.value)) },
     { field: "status" },
-    { field: "senderBatchId", headerName: "Sender batch" },
-    { field: "payoutBatchId", headerName: "Batch" },
-    { field: "payoutItemId", headerName: "Item" },
+    { field: "senderBatchId", headerName: "Sender batch", cellRenderer: PayPalRef },
+    { field: "payoutBatchId", headerName: "Batch", cellRenderer: PayPalRef },
+    { field: "payoutItemId", headerName: "Item", cellRenderer: PayPalRef },
   ];
   useEffect(() => {
     const load = () => void api.payouts().then(setRows);
@@ -56,7 +68,13 @@ export function PayoutsGrid() {
         detailCellRenderer={PayoutDetail}
         detailRowHeight={320}
         isRowMaster={() => true}
-        onGridReady={(e) => { apiRef.current = e.api; }}
+        initialState={gridState.initialState}
+        onStateUpdated={gridState.onStateUpdated}
+        onGridReady={(e) => {
+          apiRef.current = e.api;
+          gridState.onGridReady(e);
+          onGrid?.(e.api);
+        }}
       />
     </div>
   );

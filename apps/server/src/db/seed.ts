@@ -13,6 +13,8 @@ import {
   policies,
   priceHistory,
   products,
+  proposals,
+  refunds,
   salesDaily,
   simState,
   suppliers,
@@ -44,9 +46,8 @@ async function chunks<T>(rows: T[], write: (part: T[]) => Promise<unknown>) {
 export async function seed(): Promise<void> {
   const root = repoRoot();
   const catalog = JSON.parse(fs.readFileSync(path.join(root, "fixtures", "products.json"), "utf8")) as ProductSeed[];
-  const pool = JSON.parse(fs.readFileSync(path.join(root, "fixtures", "capture-pool.json"), "utf8")) as {
-    orders?: { id: string; paypalOrderId?: string; paypalCaptureId?: string }[];
-  };
+  const { readCapturePool } = await import("../paypal/capturePool.js");
+  const pool = readCapturePool();
   const overrides = new Map((pool.orders ?? []).map((order) => [order.id, order]));
   const seedValue = settings.demoSeed();
   const rng = mulberry32(seedValue);
@@ -142,6 +143,7 @@ export async function seed(): Promise<void> {
         currency: "USD",
         simDay: 0,
         createdAt,
+        confirmedAt: capture.startsWith("DRY") ? createdAt : null,
       };
     }),
   );
@@ -172,12 +174,76 @@ export async function seed(): Promise<void> {
     pausedAll: false,
     lastSummary: "Day 0. The shop is seeded. Advance a day to let the crew work.",
   });
+
+  // P3.6: ~30 days of earlier decisions (flagged simulated) so Insights is never empty on Day 0.
+  // Day -5 gets a refund spike for the anomaly agent / banner.
+  const simulated: (typeof proposals.$inferInsert)[] = [];
+  const simRefunds: (typeof refunds.$inferInsert)[] = [];
+  const agents = ["cs", "inventory", "pricing", "supplier"] as const;
+  const types = ["refund", "payout", "price_change", "reply"] as const;
+  for (let day = -30; day < 0; day++) {
+    const spike = day === -5;
+    const count = spike ? 8 : 2 + Math.floor(rng() * 3);
+    for (let i = 0; i < count; i++) {
+      const agent = agents[Math.floor(rng() * agents.length)];
+      const type = spike && i < 6 ? "refund" : types[Math.floor(rng() * types.length)];
+      const amount =
+        type === "refund"
+          ? money(spike ? 18 + rng() * 22 : 6 + rng() * 12)
+          : type === "payout"
+            ? money(40 + rng() * 200)
+            : type === "price_change"
+              ? money(1 + rng() * 4)
+              : 0;
+      const id = `sim-${day}-${i}`;
+      const stamp = new Date(Date.UTC(2026, 8, 26 + day)).toISOString();
+      simulated.push({
+        id,
+        agent,
+        type,
+        targetRef: type === "refund" ? "ord-small" : type === "payout" ? "po-sim" : "prod-fig",
+        toolName: type === "refund" ? "create_refund" : type === "payout" ? "pay_supplier" : type === "price_change" ? "set_price" : "send_reply",
+        toolArgsJson: {},
+        reasoning: `Simulated ${type} from historical day ${day} (seeded for Insights).`,
+        summary: spike && type === "refund"
+          ? `Simulated refund spike $${amount.toFixed(2)} (day ${day})`
+          : `Simulated ${type} $${amount.toFixed(2)}`,
+        reason: type === "refund" ? "damaged" : null,
+        inputsJson: { simulated: true, executionPath: "dry" },
+        confidenceModel: 0.7 + rng() * 0.2,
+        confidenceLlm: 0.5,
+        riskScore: 20 + rng() * 40,
+        amount,
+        status: type === "reply" ? "confirmed" : "confirmed",
+        policyResultJson: { decision: "auto_approved", reasons: ["simulated history"] },
+        correlationId: `sim-corr-${day}-${i}`,
+        createdAt: stamp,
+        decidedBy: "policy",
+        decidedAt: stamp,
+        simDay: day,
+      });
+      if (type === "refund" && amount > 0) {
+        simRefunds.push({
+          id: `sim-ref-${day}-${i}`,
+          orderId: "ord-small",
+          proposalId: id,
+          paypalRefundId: `DRY-REF-SIM${Math.abs(day)}${i}`,
+          amount,
+          status: "COMPLETED",
+          createdAt: stamp,
+          confirmedAt: stamp,
+        });
+      }
+    }
+  }
+  await chunks(simulated, (part) => database.insert(proposals).values(part));
+  await chunks(simRefunds, (part) => database.insert(refunds).values(part));
 }
 
 export async function resetDatabase(): Promise<void> {
   await db().execute(sql.raw(`TRUNCATE TABLE
-    audit_log, webhook_events, llm_cache, actions, refunds, payouts, proposals,
-    messages, order_items, orders, purchase_orders, forecasts, sales_daily,
+    audit_log, webhook_events, llm_cache, studio_ai_runs, actions, refunds, payouts, proposals,
+    messages, order_items, orders, checkout_drafts, purchase_orders, forecasts, sales_daily,
     competitor_prices, price_history, products, customers, suppliers, policies, sim_state
     CASCADE`));
   await seed();

@@ -1,3 +1,236 @@
 {
-  "entries": []
+  "entries": [
+    {
+      "hash": "49be9297a1098e68bafa5ad3ba51f235c03cf9374887cf3f9dec6450af7553b6",
+      "object": {
+        "action": "create_refund",
+        "amount": 8,
+        "reasoning": "I am refunding $8.00 of the $36.00 still captured. Category: damaged.",
+        "confidence": 0.81
+      },
+      "note": "day-1:small-damage"
+    },
+    {
+      "hash": "e432b0ad80fa6c17a66364a09af405d225e5fe6fccf512091009e89fc8fe41e2",
+      "object": {
+        "action": "create_refund",
+        "amount": 45,
+        "reasoning": "I am refunding $45.00 of the $45.00 still captured. Category: damaged.",
+        "confidence": 0.62
+      },
+      "note": "day-1:high-value-angry"
+    },
+    {
+      "hash": "1e47c6c9e1aa571f6ac9a913ee432da8f5303fadf59b9432874c402587acb9ce",
+      "object": {
+        "action": "send_reply",
+        "amount": 0,
+        "reasoning": "No refund. I will answer the question and leave the payment alone.",
+        "confidence": 0.6
+      },
+      "note": "day-1:general-burn"
+    },
+    {
+      "hash": "479dc050d87654561964f0fb3b61680eb719ddc9e89e018714ab6ea402affbcb",
+      "object": {
+        "action": "create_refund",
+        "amount": 6,
+        "reasoning": "I am refunding $6.00 of the $24.00 still captured. Category: late.",
+        "confidence": 0.81
+      },
+      "note": "day-2:late-mild"
+    },
+    {
+      "hash": "1ca673aa9e6c5c85a57d751ba07d3380649c42ff611d01488c0ccf55019b471e",
+      "object": {
+        "action": "create_refund",
+        "amount": 12,
+        "reasoning": "I am refunding $12.00 of the $32.00 still captured. Category: wrong_item.",
+        "confidence": 0.81
+      },
+      "note": "day-2:wrong-item"
+    },
+    {
+      "hash": "08fd78dd0102a7fb6d78fc3e7361f87356df535ce88af7fd553065449695adb3",
+      "object": {
+        "action": "create_refund",
+        "amount": 10,
+        "reasoning": "I am refunding $10.00 of the $26.00 still captured. Category: not_as_described.",
+        "confidence": 0.81
+      },
+      "note": "day-2:not-as-described"
+    },
+    {
+      "hash": "e0f72347caacc0695ca206e86ea8e0ad123e482cd73fcc365917378841f8d615",
+      "object": {
+        "action": "escalate_to_owner",
+        "amount": 0,
+        "reasoning": "I am not refunding this. It needs a person: the message is suspicious or I do not have a captured PayPal payment to refund.",
+        "confidence": 0.6
+      },
+      "note": "day-3:suspicious-empty-box"
+    },
+    {
+      "hash": "e5967b7fe9b61726123202683ab190c02ab8275851abbc92e020fc7d271f7ade",
+      "object": {
+        "action": "send_reply",
+        "amount": 0,
+        "reasoning": "No refund. I will answer the question and leave the payment alone.",
+        "confidence": 0.6
+      },
+      "note": "day-3:general-wick"
+    },
+    {
+      "hash": "2368719a3b5aba83de08bb319842992c54e962f921a0c12142af2fd55953bbc2",
+      "object": {
+        "action": "send_reply",
+        "amount": 0,
+        "reasoning": "No refund. I will answer the question and leave the payment alone.",
+        "confidence": 0.6
+      },
+      "note": "day-3:scent-love"
+    },
+    {
+      "hash": "b28c92bb741e498af804c3b80367cd9c93f129d4f2905f1e0869b5dc7763f6f1",
+      "object": {
+        "action": "create_refund",
+        "amount": 9,
+        "reasoning": "I am refunding $9.00 of the $32.00 still captured. Category: not_as_described.",
+        "confidence": 0.81
+      },
+      "note": "day-4:burn-tunnel"
+    },
+    {
+      "hash": "22ec77e9ab6f6820f679f7cec01214cade8cd8604ebc6aea79010b9fa6cb629e",
+      "object": {
+        "action": "send_reply",
+        "amount": 0,
+        "reasoning": "No refund. I will answer the question and leave the payment alone.",
+        "confidence": 0.6
+      },
+      "note": "day-4:gift-note"
+    },
+    {
+      "hash": "62526dcf66fac5cb8b8dd6ef84c9674264c86fb4908a36bd9905a1b7d422be2b",
+      "object": {
+        "action": "escalate_to_owner",
+        "amount": 0,
+        "reasoning": "I am not refunding this. It needs a person: the message is suspicious or I do not have a captured PayPal payment to refund.",
+        "confidence": 0.6
+      },
+      "note": "day-4:allergic"
+    },
+    {
+      "hash": "5b2a9408534300a60c7209229f4d2823802f2774182b450b40c2018d9841d1bb",
+      "object": {
+        "action": "create_refund",
+        "amount": 28,
+        "reasoning": "I am refunding $28.00 of the $28.00 still captured. Category: damaged.",
+        "confidence": 0.62
+      },
+      "note": "day-5:abuse-repeat"
+    },
+    {
+      "hash": "2aabb9eeaee0386ad0d90c5b2374214e727f6481d15977942219cb2d7e941fc3",
+      "object": {
+        "action": "escalate_to_owner",
+        "amount": 0,
+        "reasoning": "I am not refunding this. It needs a person: the message is suspicious or I do not have a captured PayPal payment to refund.",
+        "confidence": 0.6
+      },
+      "note": "day-5:double-charge"
+    },
+    {
+      "hash": "f94bac495897af23fe54885d6db07ab3c5063d90701a6ec95b0a60c6aba5c4a5",
+      "object": {
+        "action": "create_refund",
+        "amount": 14,
+        "reasoning": "I am refunding $14.00 of the $40.00 still captured. Category: damaged.",
+        "confidence": 0.81
+      },
+      "note": "day-6:budget-a"
+    },
+    {
+      "hash": "370a80345a2e45bcde5c1b2b37f1405c6852a0aa7a440a0ca93cf35efcd339d5",
+      "object": {
+        "action": "create_refund",
+        "amount": 14,
+        "reasoning": "I am refunding $14.00 of the $40.00 still captured. Category: late.",
+        "confidence": 0.81
+      },
+      "note": "day-6:budget-b"
+    },
+    {
+      "hash": "0d132d42d2804149b90cb52a1342d5cd39b53b84237e77414138a77396b4c66a",
+      "object": {
+        "action": "create_refund",
+        "amount": 14,
+        "reasoning": "I am refunding $14.00 of the $40.00 still captured. Category: wrong_item.",
+        "confidence": 0.81
+      },
+      "note": "day-6:budget-c"
+    },
+    {
+      "hash": "32b9aac46993ce0a03d9cbcaac7d71bafe9267a41ae645fd1828a3f4fbb88afa",
+      "object": {
+        "action": "create_refund",
+        "amount": 14,
+        "reasoning": "I am refunding $14.00 of the $40.00 still captured. Category: damaged.",
+        "confidence": 0.81
+      },
+      "note": "day-6:budget-d"
+    },
+    {
+      "hash": "8b1e6badc682d53c773a8ede13c66be7331ec454a66f34cb0c1fcecc3949b2ff",
+      "object": {
+        "action": "create_refund",
+        "amount": 14,
+        "reasoning": "I am refunding $14.00 of the $40.00 still captured. Category: not_as_described.",
+        "confidence": 0.81
+      },
+      "note": "day-6:budget-e"
+    },
+    {
+      "hash": "d747b60509a9a6f62d3a10d4fe2a0ea3beb8fd5b40444408eedfecf3964c9e00",
+      "object": {
+        "action": "create_refund",
+        "amount": 90,
+        "reasoning": "I am refunding $90.00 of the $90.00 still captured. Category: damaged.",
+        "confidence": 0.62
+      },
+      "note": "day-6:budget-big"
+    },
+    {
+      "hash": "4bc024b33393fb67d17ae28618ca1b0fbcdc5536ee681804f8e1e5b77bbeb801",
+      "object": {
+        "action": "send_reply",
+        "amount": 0,
+        "reasoning": "No refund. I will answer the question and leave the payment alone.",
+        "confidence": 0.6
+      },
+      "note": "day-7:general-soot"
+    },
+    {
+      "hash": "580206b457e3b7a69690a66fab56ea47f28090e12000d1444128be519542d2eb",
+      "object": {
+        "action": "send_reply",
+        "amount": 0,
+        "reasoning": "No refund. I will answer the question and leave the payment alone.",
+        "confidence": 0.6
+      },
+      "note": "day-7:thank-you"
+    },
+    {
+      "hash": "fec175c47f16a1139d1fafbf218836e5791b7d4f9582547b7f9d07c0c1a3dd2b",
+      "object": {
+        "action": "send_reply",
+        "amount": 0,
+        "reasoning": "No refund. I will answer the question and leave the payment alone.",
+        "confidence": 0.6
+      },
+      "note": "day-7:cold-throw"
+    }
+  ],
+  "generatedBy": "seed-llm-replay.ts",
+  "count": 23
 }

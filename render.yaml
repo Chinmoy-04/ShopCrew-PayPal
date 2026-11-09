@@ -2,14 +2,33 @@ services:
   - type: web
     name: shopcrew
     runtime: node
-    plan: free
+    # Paid, always-on compute. Confirm the displayed price against your credit balance.
+    plan: 0.5c-512mb
+    numInstances: 1
     region: oregon
     buildCommand: npm ci && npm run build
     startCommand: npm run start
     healthCheckPath: /healthz
+    disk:
+      name: shopcrew-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: NODE_VERSION
         value: "22"
+      - key: PGLITE_DIR
+        value: /var/data/pglite
+      - key: CAPTURE_POOL_PATH
+        value: /var/data/capture-pool.json
+      - key: WORKFLOW_CALLBACK_TOKEN
+        generateValue: true
+      - key: RENDER_API_KEY
+        sync: false
+      - key: RENDER_WORKFLOW_SLUG
+        fromService:
+          type: workflow
+          name: shopcrew-operations
+          property: slug
       - key: LLM_PROVIDER
         value: replay
       - key: PAYPAL_ENV
@@ -34,8 +53,45 @@ services:
         sync: false
       - key: AG_STUDIO_LICENSE_KEY
         sync: false
+      - key: AG_STUDIO_OPENAI_API_KEY
+        sync: false
+      - key: STUDIO_AI_DAILY_CAP
+        value: "50000"
+      - key: STUDIO_AI_RATE_PER_MIN
+        value: "5"
+      - key: SUPPLIER_EMAILS
+        sync: false
+      - key: UNCLAIMED_SUPPLIER_EMAIL
+        sync: false
+      - key: DEMO_BUYER_EMAIL
+        sync: false
+      - key: DEMO_BUYER_HINT
+        value: Use the sandbox buyer login supplied in the submission testing instructions.
+      # Optional shared demo: public reset with 60s cooldown (see DEMO_PUBLIC_RESET in .env.example)
+      - key: DEMO_PUBLIC_RESET
+        value: "0"
 
-# Do not add the free Postgres database until 15 Nov 2026.
-# Free databases expire 30 days after creation. Created on 15 or 16 Nov,
-# expiry lands after judging (1–15 Dec). Until then the app uses PGlite
-# and reseeds on boot. Merge docs/render-postgres.yaml on that date.
+  - type: workflow
+    name: shopcrew-operations
+    runtime: node
+    region: oregon
+    buildCommand: npm ci && npm run build -w @shopcrew/server
+    startCommand: node apps/server/dist/workflows/index.js
+    # Workflow compute and retries are defined per task in src/workflows/index.ts.
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: SHOPCREW_BASE_URL
+        fromService:
+          type: web
+          name: shopcrew
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: WORKFLOW_CALLBACK_TOKEN
+        fromService:
+          type: web
+          name: shopcrew
+          envVarKey: WORKFLOW_CALLBACK_TOKEN
+
+# PGlite + capture pool are on the paid disk; no expiring free Postgres required.
+# Do not enable keep-warm for this always-on deployment.
+# See docs/deployment.md for setup, backups, optional Postgres, and Workflow verification.

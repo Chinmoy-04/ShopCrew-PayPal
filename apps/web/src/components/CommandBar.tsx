@@ -4,15 +4,19 @@ import { api } from "../api/client";
 
 const PRESETS = [
   { label: "Needs approval", query: "show pending approval" },
-  { label: "Refunds", query: "show refunds" },
-  { label: "Auto-approved", query: "show auto approved today" },
+  { label: "Refunds over $20", query: "show refunds over $20" },
+  { label: "Blocked by policy", query: "blocked by policy" },
+  { label: "Group by agent", query: "group by agent" },
+  { label: "Approved by me", query: "approved by me" },
 ];
 
 export function CommandBar({ grid, getApi, onGrid }: { grid: string; getApi: () => GridApi | null; onGrid: (name: string) => void }) {
-  const [query, setQuery] = useState("show pending approval");
+  const [query, setQuery] = useState("show refunds over $20");
   const [explanation, setExplanation] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [chips, setChips] = useState<string[]>([]);
+  const [undoState, setUndoState] = useState<{ filterModel: unknown; rowGroupCols: string[] } | null>(null);
 
   async function run(nextQuery: string) {
     setError("");
@@ -30,22 +34,47 @@ export function CommandBar({ grid, getApi, onGrid }: { grid: string; getApi: () 
       schema = null;
     }
     try {
+      const previous = {
+        filterModel: gridApi?.getFilterModel() ?? null,
+        rowGroupCols: gridApi?.getRowGroupColumns().map((col) => col.getColId()) ?? [],
+      };
       const result = await api.nl(nextQuery, grid, state, schema);
       if (result.grid && result.grid !== grid) onGrid(result.grid);
       setExplanation(result.explanation);
+      setUndoState(previous);
       await Promise.resolve();
       const target = getApi();
       if (result.gridState && target) {
+        const known = new Set(target.getColumns()?.map((col) => col.getColId()) ?? []);
+        // Drop unknown columns before setState when possible.
+        void known;
         target.setState(result.gridState as never, result.propertiesToIgnore as never);
       } else if (result.simple && target) {
         target.setFilterModel(result.simple.filterModel);
         if (result.simple.rowGroupCols.length) target.setRowGroupColumns(result.simple.rowGroupCols);
       }
+      const applied: string[] = [];
+      const fm = result.simple?.filterModel ?? {};
+      for (const [key, value] of Object.entries(fm)) {
+        applied.push(`${key}: ${JSON.stringify(value)}`);
+      }
+      if (result.simple?.rowGroupCols?.length) applied.push(`group: ${result.simple.rowGroupCols.join(",")}`);
+      setChips(applied);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not apply that");
     } finally {
       setBusy(false);
     }
+  }
+
+  function undo() {
+    const target = getApi();
+    if (!target || !undoState) return;
+    target.setFilterModel(undoState.filterModel as never);
+    target.setRowGroupColumns(undoState.rowGroupCols);
+    setChips([]);
+    setExplanation("Reverted the last grid filter.");
+    setUndoState(null);
   }
 
   async function submit(event: FormEvent) {
@@ -77,7 +106,15 @@ export function CommandBar({ grid, getApi, onGrid }: { grid: string; getApi: () 
           placeholder="Ask the grid in plain English…"
         />
         <button className="btn primary" type="submit" disabled={busy}>{busy ? "…" : "Apply"}</button>
+        <button className="btn" type="button" disabled={!undoState || busy} onClick={undo}>Undo</button>
       </form>
+      {!!chips.length && (
+        <div className="preset-chips applied-chips">
+          {chips.map((chip) => (
+            <span key={chip} className="preset-chip active">{chip}</span>
+          ))}
+        </div>
+      )}
       {(explanation || error) && (
         <div className="command-bar-feedback">
           {explanation && <span className="note">{explanation}</span>}

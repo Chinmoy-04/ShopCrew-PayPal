@@ -74,6 +74,14 @@ CREATE TABLE IF NOT EXISTS orders (
   refunded_total double precision NOT NULL,
   currency text NOT NULL,
   sim_day integer NOT NULL,
+  created_at text NOT NULL,
+  confirmed_at text
+);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS confirmed_at text;
+CREATE TABLE IF NOT EXISTS checkout_drafts (
+  paypal_order_id text PRIMARY KEY,
+  lines_json jsonb NOT NULL,
+  total double precision NOT NULL,
   created_at text NOT NULL
 );
 CREATE TABLE IF NOT EXISTS order_items (
@@ -218,5 +226,18 @@ CREATE TABLE IF NOT EXISTS llm_cache (
   request_json jsonb NOT NULL,
   response_json jsonb NOT NULL,
   created_at text NOT NULL
+);
+CREATE TABLE IF NOT EXISTS studio_ai_runs (
+  id text PRIMARY KEY,
+  thread_id text NOT NULL,
+  run_id text NOT NULL,
+  agent_id text NOT NULL,
+  query text,
+  status text NOT NULL,
+  tool_calls_json jsonb,
+  usage_json jsonb,
+  error text,
+  created_at text NOT NULL,
+  finished_at text
 );
 `;

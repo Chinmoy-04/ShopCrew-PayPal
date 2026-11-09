@@ -22,6 +22,13 @@ async function mapProposals(rows: (typeof proposals.$inferSelect)[]) {
       const refund = refundRows.find((item) => item.proposalId === row.id);
       const payout = payoutRows.find((item) => item.proposalId === row.id);
       const policy = row.policyResultJson as { reasons?: string[]; decision?: string } | null;
+      const inputs = (row.inputsJson ?? {}) as {
+        executionPath?: string;
+        idempotencyKey?: string;
+        paypalRefundId?: string;
+        editedByOwner?: boolean;
+      };
+      const actionPath = inputs.executionPath;
       return {
         id: row.id,
         createdAt: row.createdAt,
@@ -48,6 +55,13 @@ async function mapProposals(rows: (typeof proposals.$inferSelect)[]) {
         conflictWithId: row.conflictWithId,
         reason: row.reason,
         decidedBy: row.decidedBy,
+        decidedAt: row.decidedAt,
+        editedByOwner: Boolean(inputs.editedByOwner || (policy as { editedByOwner?: boolean } | null)?.editedByOwner),
+        executionPath: actionPath ?? null,
+        idempotencyKey: inputs.idempotencyKey ?? null,
+        refundStatus: refund?.status ?? null,
+        refundConfirmedAt: refund?.confirmedAt ?? null,
+        createdAtRaw: row.createdAt,
       };
     })
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));

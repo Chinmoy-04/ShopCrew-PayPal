@@ -13,29 +13,60 @@ export async function applyPayPalEvent(event: {
 }, verified: boolean): Promise<void> {
   const database = db();
   const existing = await database.select().from(webhookEvents).where(eq(webhookEvents.paypalEventId, event.id));
-  if (existing.length) return;
-  const resource = event.resource ?? {};
-  const resourceId = String(resource.id ?? resource.payout_item_id ?? resource.payout_batch_id ?? "");
-  await database.insert(webhookEvents).values({
-    id: crypto.randomUUID(),
-    paypalEventId: event.id,
-    eventType: event.event_type,
-    resourceId,
-    verified,
-    payloadJson: event,
-    receivedAt: nowIso(),
-    processedAt: nowIso(),
-  });
+  if (existing.length) {
+    // Already fully processed — skip redelivery.
+    if (existing[0].processedAt) return;
+    // Row exists but handler previously failed before processedAt was set — continue.
+  } else {
+    await database.insert(webhookEvents).values({
+      id: crypto.randomUUID(),
+      paypalEventId: event.id,
+      eventType: event.event_type,
+      resourceId: String(event.resource?.id ?? event.resource?.payout_item_id ?? event.resource?.payout_batch_id ?? ""),
+      verified,
+      payloadJson: event,
+      receivedAt: nowIso(),
+      processedAt: null,
+    });
+  }
+
   if (!verified && !event.dryRun) {
     await writeAudit({ actor: "paypal", event: "webhook.ignored", message: `Ignored unverified ${event.event_type}.` });
+    await database.update(webhookEvents).set({ processedAt: nowIso() }).where(eq(webhookEvents.paypalEventId, event.id));
     return;
   }
 
+  const resource = event.resource ?? {};
+  const resourceId = String(resource.id ?? resource.payout_item_id ?? resource.payout_batch_id ?? "");
+  let affectedOrderId: string | null = null;
+
   if (event.event_type === "PAYMENT.CAPTURE.COMPLETED" || event.event_type === "CHECKOUT.ORDER.APPROVED") {
     const captureId = String(resource.id ?? "");
-    const [order] = await database.select().from(orders).where(eq(orders.paypalCaptureId, captureId));
-    if (order && order.status === "CREATED") {
-      await database.update(orders).set({ status: "CAPTURED" }).where(eq(orders.id, order.id));
+    const orderIdFromResource = String(
+      (resource.supplementary_data as { related_ids?: { order_id?: string } } | undefined)?.related_ids?.order_id
+      ?? (resource as { custom_id?: string }).custom_id
+      ?? "",
+    );
+    let [order] = captureId
+      ? await database.select().from(orders).where(eq(orders.paypalCaptureId, captureId))
+      : [];
+    if (!order && orderIdFromResource) {
+      [order] = await database.select().from(orders).where(eq(orders.paypalOrderId, orderIdFromResource));
+    }
+    if (order && !order.confirmedAt) {
+      await database.update(orders).set({
+        status: order.status === "CREATED" ? "CAPTURED" : order.status,
+        confirmedAt: nowIso(),
+        paypalCaptureId: order.paypalCaptureId || captureId || order.paypalCaptureId,
+      }).where(eq(orders.id, order.id));
+      affectedOrderId = order.id;
+      await writeAudit({
+        actor: event.dryRun ? "system" : "paypal",
+        event: "order.confirmed",
+        message: event.dryRun
+          ? `Dry-run webhook confirmed order ${order.id}.`
+          : `PayPal webhook confirmed order ${order.id}.`,
+      });
     }
   }
 
@@ -47,6 +78,7 @@ export async function applyPayPalEvent(event: {
       await database.update(proposals).set({ status: "confirmed" }).where(eq(proposals.id, refund.proposalId));
       const proposal = await proposalView(refund.proposalId);
       if (proposal) bus.emit({ type: "proposal.upserted", proposal });
+      affectedOrderId = refund.orderId;
       await writeAudit({
         actor: event.dryRun ? "system" : "paypal",
         event: "refund.confirmed",
@@ -90,6 +122,11 @@ export async function applyPayPalEvent(event: {
     }
   }
 
-  const orderViews = await listOrderViews();
-  for (const order of orderViews.slice(0, 1)) bus.emit({ type: "order.upserted", order });
+  await database.update(webhookEvents).set({ processedAt: nowIso() }).where(eq(webhookEvents.paypalEventId, event.id));
+
+  if (affectedOrderId) {
+    const orderViews = await listOrderViews();
+    const order = orderViews.find((row) => row.id === affectedOrderId);
+    if (order) bus.emit({ type: "order.upserted", order });
+  }
 }

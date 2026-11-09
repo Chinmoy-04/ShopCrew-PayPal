@@ -1,0 +1,250 @@
+# ShopCrew Master Plan — PayPal AI Hackathon 2026
+
+Oct 26, 2026 · @Chino
+
+## Executive summary
+
+ShopCrew can compete for five prizes by the 12 Nov deadline, but only if the next 16 days go to three gaps, not to new features. Submission closes **Thu 12 Nov, 12:00 PST (21:00 Budapest)**. This plan freezes features on **Fri 6 Nov**, spends **7 and 8 Nov** on visual polish, records on **Mon 9 Nov** and submits on **Tue 10 Nov**, leaving two days of buffer.
+
+**Prizes worth chasing (Devpost):** Best Use of AG Grid ($5,000 / $2,000 / $1,000), Best Use of PayPal + AI ($5,000), Best Use of Agentic Commerce ($5,000), Best Demo Delivery ($5,000), Render credits ($1,000 / $750 / $500), and the overall prizes ($12,000 / $8,000 / $5,000). Stage two scores five criteria at about 20% each: Technological Implementation, Design, Potential Impact, Innovation, Presentation. Ties break in that order, so technical depth wins ties.
+
+**What works today.** In a clean clone, `npm ci`, typecheck, the 16 server tests and the production build all pass. A Day 1 run produced 8 decisions: an $8 refund auto-approved, a $45 refund waiting, a +4% FIG price change applied, a −15% NIGHT discount blocked, and three supplier payouts waiting ($24.88, $347.49, $689.76).
+
+### The three gaps that decide the outcome
+
+1. **The AI is thin.** The LLM only writes two-sentence narration. Agents pick tools by rule, and `fixtures/llm-replay.json` has zero entries. This weakens PayPal + AI and Agentic Commerce, and the Technological Implementation score.
+2. **The Studio prize asks for the Agent Framework, and the repo uses defaults.** The harness runs AG's five built-in agents on one OpenAI model. There is no custom agent, no telemetry observer, no saved history, two custom widgets, and a one-shot data snapshot that is half empty on Day 0.
+3. **Nothing is proven live.** There is no Render deploy, `fixtures/capture-pool.json` is empty, checkout is never visibly confirmed by a webhook, and the sandbox buyer login is not published for judges.
+
+**North-star demo (2:50).** Maya's morning in one screen. A buyer pays with PayPal and the order flips to confirmed. She clicks Advance. The agents propose, and the detail panel shows the model choosing `create_refund`. Policy auto-approves the $8 refund and holds the $45. Maya edits it to $20, approves, and PayPal confirms. The NIGHT discount is blocked. She cancels the UNCLAIMED payout. On Insights she asks Studio AI "is any agent refunding unusually much?" and the custom refund-sentinel agent builds a widget. She hits Pause all agents.
+
+**Sequencing.** Money path first, because it is the spine of the demo. Studio second, because it has the largest prize gap. Visual polish last, but in a fixed two-day box, because Design is a fifth of the score.
+
+---
+
+## Hackathon gap matrix
+
+Thirteen of fourteen requirements are partial or missing, but most are small; the ones that decide prizes are rows **7, 8, 9 and 11**. Requirements come from the Devpost page, the rules and the AG Grid prize page. "Today" comes from the code and from running it.
+
+| # | Requirement | Today in the repo | Status | Work item | Prize impact |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Built or significantly updated after 1 Oct 2026 | First commit 19 Oct 2026 | Done | none | Eligibility |
+| 2 | Public repo with OSI licence visible in About | MIT LICENSE exists; README and landing page still link to YOUR_GITHUB | Partial | P0.2 | Eligibility |
+| 3 | Working demo: hosted URL or run instructions | Run instructions work from a clean clone; no hosted URL yet | Partial | P0.1, P4.1, P4.2 | Eligibility, Render |
+| 4 | Demo video under 3:00 on YouTube, shows it working end to end | Script exists but describes a Day 1 that no longer matches (the UNCLAIMED payout is one of three pending payouts) and has no Studio beat | Missing | P4.4 | Presentation, Best Demo Delivery |
+| 5 | Text description and AI tools list | `docs/devpost.md` drafted; omits Studio Agent Framework and OpenAI | Partial | P4.5 | Presentation |
+| 6 | PayPal central, sandbox only | Orders v2, JS SDK v6, toolkit refunds, Payouts, webhook verify all coded; `capture-pool.json` empty, so refunds are DRY until linked | Partial | P0.4, P1.4 | PayPal + AI, Technological Implementation |
+| 7 | Checkout confirmed by webhook | `PAYMENT.CAPTURE.COMPLETED` only updates orders in `CREATED`, but checkout saves `CAPTURED`, so the confirmation is invisible | Missing | P1.2 | Technological Implementation |
+| 8 | AI used meaningfully | LLM writes 2-sentence narration only; tool choice is rule-based; replay file is empty | Partial | P1.8 | PayPal + AI, Agentic Commerce, Innovation |
+| 9 | AG Grid: custom widgets | 2 (`pulse-meter`, `status-stack`) | Partial | P3.5 | AG Grid |
+| 10 | AG Grid: theming and layout tools | Themed with `studioTheme.withParams`; 3-page report; layout saved in localStorage; StatusStack hard-codes PayPal blues that clash with the green theme | Partial | P3.7 | AG Grid, Design |
+| 11 | AG Grid: Studio Agent Framework | `createAiHarness(api, {adapter, primary:'lead'})` — defaults only; no custom agent, observers or history | Missing | P3.1, P3.3, P3.4 | AG Grid (the stated differentiator) |
+| 12 | Free to test through 15 Dec, with credentials | Sandbox buyer login unpublished; AG Studio trial is 45 days, so a key issued now lapses before 15 Dec | Missing | P0.3, P4.5 | Eligibility |
+| 13 | Render | `render.yaml` ready; no deploy; 7.3 MB single JS bundle | Partial | P0.1, P4.1 | Render |
+| 14 | Agentic Commerce | Policy gate, budgets, kill switch, rollback all work; agents are not LLM-driven | Partial | P1.8, P2.5 | Agentic Commerce |
+
+**Verified by running it.** `npm run typecheck`, `npm test` (16 tests) and `npm run build` pass. A Day 1 advance on the built server returns 8 decisions. On a fresh database `/api/insights` returns 0 payouts until one is approved, so the Money page and its payout widgets start empty.
+
+Effort key for every phase: **S** = up to 2 hours, **M** = up to half a day, **L** = a day or more. Risk is the chance the item slips, not its importance.
+
+---
+
+## Phase 0: Audit and fix blockers (Mon 26 to Tue 27 Oct)
+
+**Goal:** replace assumptions with evidence, and get the app onto a public URL on day one so deploy problems surface early.
+
+**Exit gate:** a Render URL serves `/`, `/shop`, `/control` and `/insights`, and one real sandbox checkout, refund and payout have each produced a PayPal id.
+
+| ID | Work item and prize rationale | Files and env | Acceptance (testable) | Demo beat | Effort / risk |
+| --- | --- | --- | --- | --- | --- |
+| **P0.1** | Baseline Render deploy from the current main, free plan, replay mode, DRY money. Finds build, port and cold-start problems now; Render prize needs a live URL. | `render.yaml`; env `PUBLIC_BASE_URL` = the Render URL, `ADMIN_TOKEN` (generated), `NODE_VERSION=22` | `/healthz` returns `{ok:true}`; `node scripts/warmup.mjs <url>` passes; `/insights` renders after one Advance; cold start measured and written down | none (de-risking) | S / medium |
+| **P0.2** | Fix documentation drift. README step 5 says webhook path `/api/webhooks/paypal` and passes the URL as an argument; the code serves `/api/paypal/webhooks` and the script reads `PUBLIC_BASE_URL`. `YOUR_GITHUB` placeholder in README and `LandingPage.tsx`. Reset button prompts with default `demo`, but the token is `shopcrew-demo` locally and random on Render. | `README.md`, `docs/sandbox-setup.md`, `apps/web/src/pages/LandingPage.tsx`, `apps/web/src/components/SimControls.tsx` | `grep -r YOUR_GITHUB` returns nothing; a teammate follows the README from a clean clone to a running app with no questions; the Reset prompt tells the user where the token comes from | none | S / low |
+| **P0.3** | Licences and Discord questions. The AG Studio trial is 45 days, so a key issued today lapses about 10 Dec, before judging ends on 15 Dec. Post Q1 and Q2 from `docs/discord-questions.md` today; ask for a key issued on or after 1 Nov, or extended to 15 Dec. The app already runs watermarked without a key, so this is not a blocker. | `docs/discord-questions.md`; env `AG_GRID_LICENSE_KEY`, `AG_STUDIO_LICENSE_KEY` | Questions posted; answers logged in `docs/discord-questions.md`; licence expiry date written in the README | none | S / external dependency |
+| **P0.4** | Sandbox truth run. Create the sandbox accounts and the `shopcrew-dev` app; enable Payouts and Transaction Search; run one real checkout, one toolkit refund, one payout to a real sandbox account, one payout to an unclaimed email, and register the webhook through a tunnel. Everything later depends on knowing what really works. | `docs/sandbox-setup.md`, `scripts/register-webhook.mjs`; env `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID`, `PUBLIC_BASE_URL` | Three live captures (one of at least $45, one of at least $36); a refund id returned by `create_refund`; a payout item id; the UNCLAIMED payout appears; at least one webhook row with `verified = true`. Failures logged as items in this plan | none | M / high (Payouts permission, toolkit 1.11.0 behaviour) |
+| **P0.5** | CI check. Only `keepwarm.yml` exists today. Add a workflow running `npm ci`, `npm run typecheck`, `npm test`, `npm run build` on push. All four pass locally right now, so this protects the freeze. | `.github/workflows/ci.yml` (new) | Green check on main; a deliberately broken type fails the run | none | S / low |
+
+---
+
+## Phase 1: PayPal money path and shop (Tue 27 to Fri 30 Oct)
+
+**Goal:** every dollar in the demo moves through PayPal sandbox and shows a PayPal id on screen, and the agents visibly choose the PayPal tool.
+
+**Exit gate:** the full B2 to B6 sequence (see the video beats in Phase 4) runs on the Render URL with live keys, twice in a row after a reset.
+
+Two findings shape this phase. First, `executor.ts` treats any receiver ending in `@shopcrew.test` as dry-run, and the default `UNCLAIMED_SUPPLIER_EMAIL` ends that way, so the UNCLAIMED payout is simulated even with live keys, contradicting `docs/sandbox-setup.md`. Second, a $45 capture survives only two $20 refunds, so a public demo that judges click through will exhaust the capture pool quickly.
+
+| ID | Work item and prize rationale | Files and env | Acceptance (testable) | Demo beat | Effort / risk |
+| --- | --- | --- | --- | --- | --- |
+| **P1.1** | Success page becomes a live order card. Today it prints the order id only. Show LIVE or DRY, PayPal order id, capture id, and a button that opens the control room on that order. Makes the money path judge-clear. | `ShopPages.tsx` (`SuccessPage`), `routes/register.ts` (new `GET /api/orders/:id`), `ControlRoomPage.tsx`, `OrdersGrid.tsx` | After a live checkout the page shows LIVE plus both ids; the button opens Orders with that row selected and scrolled into view; a DRY order shows DRY | B2 | M / low |
+| **P1.2** | Webhook-confirmed checkout. `PAYMENT.CAPTURE.COMPLETED` only updates orders in `CREATED`, but `saveOrder` writes `CAPTURED`, so the webhook never changes anything visible. Add a `confirmedAt` column; new orders show "captured, awaiting webhook", then "confirmed". Also `applyPayPalEvent` emits `orderViews.slice(0, 1)`, the first order whichever it is; emit the affected order instead. | `db/schema.ts`, `paypal/events.ts`, `routes/register.ts` (`saveOrder`), `OrdersGrid.tsx`; env `PAYPAL_WEBHOOK_ID`, `PUBLIC_BASE_URL` | With the tunnel or Render URL, a live order flips to confirmed without a reload; an unverified event leaves it unchanged and writes a `webhook.ignored` audit row; the grid updates the right row | B2 | M / medium (sandbox delivery takes 10 to 75 s; cut and label it in the video) |
+| **P1.3** | Checkout hardening. The in-memory drafts map is lost on restart, so a capture after a Render spin-down saves no lines and does not decrement stock. Quantities are not validated. Store drafts in a table; validate qty as an integer from 1 to stock; make capture idempotent. | `routes/register.ts`, `db/schema.ts` (`checkout_drafts`) | Restart the server between create and capture: stock still drops and lines are saved; qty 0, −1, 1.5 or above stock returns 400; double-clicking capture creates one order | B2 | M / low |
+| **P1.4** | Capture pool that survives restarts and judges. `fixtures/capture-pool.json` is `{"orders":[]}` and the admin route writes to the ephemeral filesystem, so Day 1 refunds fall back to DRY ids after any cold start. Auto-register qualifying live captures (no manual "Link capture pool" click). Make two large captures (cart quantity 10 gives a capture of about $300 or more, enough for 10+ runs). When a capture is exhausted, execute a labeled DRY refund instead of failing. | `routes/register.ts` (`/api/admin/capture-pool`), `db/seed.ts`, `executor/executor.ts`, `fixtures/capture-pool.json`; optional env `CAPTURE_POOL_JSON` | Cold restart: Day 1 refunds still hit live captures; 10 consecutive reset-and-run cycles never raise a PayPal 422; an exhausted capture shows "DRY: capture exhausted" in the detail card | B3, B4 | M / medium |
+| **P1.5** | Refund execution trace and failure paths. Record which path ran (Agent Toolkit `create_refund` or REST fallback), the PayPal refund id and the idempotency key, and show them in the detail card. Add the missing executor test. | `executor/executor.ts`, `db/views.ts`, `DecisionsGrid.tsx` (Detail), `apps/server/test/executor.test.ts` (new) | Test: toolkit throws, REST is called with the same `PayPal-Request-Id` (`<proposalId>:execute`); the card reads "Executed via Agent Toolkit create_refund" or "via REST fallback"; a PayPal 4xx ends as failed with a readable message and an audit row | B3 | M / low |
+| **P1.6** | Real UNCLAIMED payout and cancel. Remove the `@shopcrew.test` dry-run rule; dry-run only when PayPal is unconfigured. Use a syntactically real address with no PayPal account for `UNCLAIMED_SUPPLIER_EMAIL`. Per `sim/scenario.ts` the CITRUS payout ($24.88, Northline Goods) is the UNCLAIMED one. Add a status timeline to the payout detail. | `executor/executor.ts` (`paySupplier`), `executor/rollback.ts`, `executor/reconciler.ts`, `PayoutsGrid.tsx`, `.env.example`, `docs/sandbox-setup.md` | With live keys the payout is actually posted (`payoutBatchId` does not start with `DRY`); status becomes `UNCLAIMED` via webhook or the 90 s reconciler; Rollback cancels the item at PayPal and the grid shows `CANCELED` | B6 | M / high (sandbox behaviour) |
+| **P1.7** | Shop and checkout completeness. Product page shows stock and "price set by pricing agent, day N"; Add disabled at zero stock; cart quantity controls and remove; an in-app "How to test" panel with the sandbox buyer login; `ProductPage` reads the SKU with `useParams` instead of `window.location`. | `ShopPages.tsx`, `routes/register.ts` (`/api/products/:sku` adds latest `price_history`), `api/client.ts`, `.env.example` (`DEMO_BUYER_EMAIL`, `DEMO_BUYER_HINT`) | Approve a price change: the product page shows the new price and the agent note; a SKU at 0 stock cannot be added; cart quantity cannot exceed stock | B2 | M / low |
+| **P1.8** | LLM chooses the PayPal tool. The model currently only narrates. Let the CS agent receive the complaint, order facts and the toolkit's own `create_refund` schema, and return `{action: create_refund / send_reply / escalate_to_owner, amount, reasoning, confidence}` via `generateObject` with a zod schema. The result goes through the unchanged `propose()` gate. The rule path stays as the fallback and as the replay baseline. Record outputs with `LLM_RECORD=1` into `fixtures/llm-replay.json` so the video is deterministic. The single biggest lift for PayPal + AI and Agentic Commerce. | `agents/cs/agent.ts`, `agents/llm.ts` (new `chooseTool`), `paypal/toolkit.ts` (expose tool schema; check `getTools()` in 1.11.0), `apps/server/test/cs-llm.test.ts` (new); env `LLM_PROVIDER`, `GOOGLE_GENERATIVE_AI_API_KEY`, `GROQ_API_KEY`, `LLM_RECORD` | Live: each Day 1 to 7 complaint yields a valid decision; a model answer above the remaining amount or with an unknown tool is clamped or rejected and audited as `agent.invalid_output`; replay mode reproduces Day 1 exactly; the gate approves and blocks the same rows as today | B3: the detail card shows `get_order`, then `create_refund`, with the model's reasoning | L / high (nondeterminism, quota; re-record after the prompt freeze on 6 Nov because replay keys hash the prompt text) |
+| **P1.9** | Webhook idempotency fix. `applyPayPalEvent` writes the event row, marked processed, before it acts. If handling throws, PayPal's redelivery is skipped as a duplicate. Write `processedAt` after success. | `paypal/events.ts`, `apps/server/test/events.test.ts` (new) | Test: first delivery throws mid-handler, second delivery completes the refund confirmation | none | S / low |
+
+---
+
+## Phase 2: Control room and AG Grid depth (Fri 30 Oct to Mon 2 Nov)
+
+**Goal:** the loop "agents propose, you decide, PayPal confirms" is obvious inside one screen, and the grid uses AG Grid features a judge will recognise as deliberate.
+
+**Exit gate:** from `/control`, a first-time viewer can find the pending $45 refund, edit it, approve it and see PayPal's confirmation without help. Phase 2 runs in parallel with the start of Phase 3 because the two share no files.
+
+Already good and kept: Decisions opens on a pending-approval filter, master/detail on four grids, integrated charts, side bar, status-bar aggregation, confidence and risk bars, inline editing of the amount, a context-menu bulk approve, and live row updates through `applyTransactionAsync`. Two defects need fixing: clicking Rollback on a confirmed refund overwrites its status with `rollback_failed`, and inline edits fail silently.
+
+| ID | Work item and prize rationale | Files and env | Acceptance (testable) | Demo beat | Effort / risk |
+| --- | --- | --- | --- | --- | --- |
+| **P2.1** | One-screen supervision strip. Above the tabs show pending $ and count, auto-approved today, budget burn per agent, and paused state, plus a "Review next pending" button. Make tabs and rows deep-linkable with `/control?tab=orders&focus=<id>`. Makes the supervision story readable in two seconds. | `ControlRoomPage.tsx`, `SimControls.tsx`, `App.tsx` (`useSearchParams`) | After Advance the strip shows at least 1 pending and its dollars; the button selects and expands the oldest pending row; a deep link restores the tab and the row | B3, B4 | M / low |
+| **P2.2** | Tab order and badges. Reorder to decisions, inbox, orders, payouts, inventory, policies, audit; show a live pending count on Decisions and Payouts via the SSE stream. | `ControlRoomPage.tsx`, `hooks/useLiveEvents.ts` | Badge counts change within 2 s of an approval without a reload | B3 | S / low |
+| **P2.3** | Named views and saved state. Persist each grid's state with AG Grid `initialState` and `onStateUpdated`. Add a view menu: Needs approval, Money out, Blocked by policy, Edited by me, Everything. | `grids/*`, `components/ViewMenu.tsx` (new), `grids/useGridState.ts` (new) | Reload keeps filters and column layout; each named view yields the expected `api.getFilterModel()` | B3 | M / low |
+| **P2.4** | Decision card in the detail row. Replace the raw JSON block with: the agent's reasoning, policy rule hits as chips (for example "refund ≤ $15 and ≤ 50% of order"), the tool trace (`get_order`, then `create_refund`), the execution path from P1.5, PayPal ids, and a status timeline submitted, then confirmed. Answers "why proposed, why blocked" for Agentic Commerce. | `DecisionsGrid.tsx` (Detail), `db/views.ts`, `components/DecisionCard.tsx` (new) | The $8 refund card shows the rule that auto-approved it; the blocked NIGHT discount card names "days of cover below lead time + 2"; every card shows at least one PayPal id once executed | B3, B5 | M / low |
+| **P2.5** | Edit-then-approve integrity. Inline edits call `api.edit` with no error handling and the PATCH does not re-check policy. Surface errors and revert the cell; re-evaluate policy on edit; mark the row "edited by you"; the approve action states the final amount. | `DecisionsGrid.tsx`, `routes/register.ts` (PATCH), `policy/engine.ts` | Edit $45 to $20: the row shows the marker, and the PayPal refund is for 20.00 (check in the sandbox dashboard); an amount above the order's remaining returns 422, shows a message and reverts the cell | B4 | M / low |
+| **P2.6** | Rollback correctness. `rollbackProposal` sets `rollback_failed` on a confirmed refund or a settled payout, destroying the real state. Return a message and write an audit row without changing status; disable the button with a reason by type (price: restore, UNCLAIMED payout: cancel, refund: not reversible). | `executor/rollback.ts`, `DecisionsGrid.tsx` (Actions), `apps/server/test/rollback.test.ts` (new) | Rollback on a confirmed refund leaves it confirmed and adds an audit row; the button is disabled with the tooltip "Refunds cannot be reversed"; price rollback restores the earlier price | B6 | S / low |
+| **P2.7** | Make the AG Grid AI Toolkit path real. `/api/nl/grid` hands the AG schema object straight to `generateObject`, which expects a zod schema or `jsonSchema()`; the error is swallowed and the bar silently uses the keyword parser (and replay mode skips the model entirely). Wrap the schema with `jsonSchema()`, validate returned state against `getStructuredSchema`, strip unknown columns before `setState`, extend the rule parser to the demo phrases, show applied-filter chips with Undo. To verify with a live key first. | `routes/register.ts` (`/api/nl/grid`), `agents/llm.ts` (`completeObject`), `CommandBar.tsx`, `apps/server/test/nl-grid.test.ts` (new); env `LLM_PROVIDER` | Ten demo phrases ("show refunds over $20", "blocked by policy", "group by agent", "approved by me", ...) each produce the expected filter model in tests; with a live key the model path applies a valid state; unknown columns are dropped | B7 | M / medium |
+| **P2.8** | Cell renderers for the story. `PolicyVerdict` (auto, needs you, blocked, with tooltip), `PayPalRef` (id with link to the sandbox activity page), consistent money formatting, a sparkline for amounts by sim day on Orders. | `grids/renderers/*` (new), `DecisionsGrid.tsx`, `OrdersGrid.tsx`, `PayoutsGrid.tsx` | Each renderer appears on its grid; money cells use one formatter | B3 | S to M / low |
+| **P2.9** | Policy what-if (optional). Replay the day's proposals under edited limits and show "3 would flip to auto-approved". Cut first if time runs short. | `policy/engine.ts`, `routes/register.ts` (`POST /api/policies/simulate`), `PoliciesGrid.tsx` | Changing the CS limit from $15 to $50 in the grid reports the correct count without writing anything | optional | M / low |
+
+---
+
+## Phase 3: AG Studio heavy lift (Sat 31 Oct to Fri 6 Nov)
+
+**Goal:** Insights is the flagship for the AG Grid prize, which judges both how the dashboard looks and how it is built: custom widgets, theming, layout tools, and the Studio Agent Framework with either a custom agent or a swapped-in harness.
+
+**Exit gate:** in Edit mode, a chat prompt makes a custom agent build a ShopCrew widget on the page, with its tool calls visible in the audit log, on a report that looks designed on first load.
+
+**What exists.** `ag-studio` 3.0.0 with a themed three-page report, two custom widgets, five data sources loaded once on page mount, and `createAiHarness(api, { adapter, primary: 'lead' })`, which runs AG's five built-in agents on one OpenAI model through a server proxy. What the typings in 3.0.0 offer and the repo does not use: the builder form `createAiHarness(api, ({ tools, builtIn }) => config)` with `directLlmRunner` agents, `tools.delegateTo`, `api.defineAiTool`, observers (telemetry), history (a persistence store), and `formatShape` on widget definitions. One documented gotcha shapes the roster: AG's built-in lead delegates to a fixed set of ids, so a custom agent is reachable only through a lead you declare yourself with a wider `delegateTo`; a primary agent runs with undefined parameters and must declare `s.undefined()`.
+
+| ID | Work item and prize rationale | Files and env | Acceptance (testable) | Demo beat | Effort / risk |
+| --- | --- | --- | --- | --- | --- |
+| **P3.1** | Custom agent roster. Replace the defaults with a builder: a `shopcrew-lead` (spread `builtIn.lead`, `delegateTo` widened to the built-ins plus the new agents) and three domain agents, `refund-sentinel`, `cash-planner`, `reorder-risk`, each a `directLlmRunner` with a description, a schema, live instructions and tools (Studio tools plus custom tools from `api.defineAiTool`). Six ShopCrew prompt starters. The core of the Agent Framework claim. Roster in the appendix. | `apps/web/src/studio/ai.ts` (rewrite), `studio/agents/*.ts` (new), `studio/tools.ts` (new); env `AG_STUDIO_OPENAI_API_KEY`, `OPENAI_MODELS` | In Edit mode, "Build a refund anomaly widget for the last 30 days" shows a hand-off chain (lead, refund-sentinel, widget) and ends with a `refund-anomaly-strip` on the page with a valid data mapping; the primary agent starts without error; every custom agent declares a description | B8 | L / high |
+| **P3.2** | Proxy hardening. `/api/studio/ai/responses` already has a model allowlist, but shares the global 300 requests per minute limit, has no error handling around the upstream fetch, forces `max_output_tokens: 16000` and has no spending cap, on a public URL with your key behind it. Move it to its own route file; add a per-IP limit, request-size cap, upstream timeout and a streamed error event, a daily token cap and a usage counter. | `routes/register.ts` to `routes/studioAi.ts`; env `STUDIO_AI_RATE_PER_MIN` (20), `STUDIO_AI_DAILY_CAP`, `AG_STUDIO_OPENAI_API_KEY` | The 21st request in a minute returns 429 and the chat shows the message; with the network cut the chat shows a readable error and does not hang; when the daily cap is reached the chat says the demo AI budget is used up | B8 | M / low |
+| **P3.3** | Telemetry observers. Pass `observers: [shopCrewObserver]`. Queue events and post batches to `POST /api/studio/telemetry`; the server writes them to `audit_log` (actor `studio-ai`) and to a `studio_ai_runs` source. Observers run synchronously in the loop, so never block in the callback. Lets judges see "the agent built this widget". | `studio/telemetry.ts` (new), `routes/studioAi.ts`, `db/schema.ts` | After one chat run the audit log shows the run, the agent id, each tool call and token usage; the Studio AI activity grid (P3.7) lists the run within 3 s | B8 | M / low |
+| **P3.4** | Thread history (optional). Implement `AgAiHistoryStore` (`listThreads`, `loadThread`, `saveThread`, `deleteThread`, event listeners) on top of `/api/studio/threads`, keyed by an anonymous session cookie. Cut if behind on 3 Nov. | `studio/history.ts` (new), `routes/studioAi.ts`, `db/schema.ts` | Reload keeps the last 10 threads; delete removes one; a second browser sees none | none | M / medium |
+| **P3.5** | Six new custom widgets beside `pulse-meter` and `status-stack`: `refund-anomaly-strip`, `payout-pipeline`, `budget-burn`, `cover-heat`, `negotiation-scoreboard`, `decision-ticker` (field mappings in the appendix). Each registers in `createWidgets` `additionalTypes` with `dataMapping` (with `aiDescription`), a form, a `formatShape` and `ai.description` so Studio AI can add and configure it, default and minimum size, and joins the ShopCrew menu group. Extract the duplicated getData effect into one hook. Replace the hard-coded PayPal blues in StatusStack. | `studio/widgets/*.tsx`, `studio/widgets/useWidgetRows.ts` (new), `studio/registry.ts`, `studio/widgets.ts` | All eight widgets appear under "ShopCrew"; Studio AI adds each from a one-line prompt and changes at least one format option; no hex colours remain in widget code | B8 | L / medium |
+| **P3.6** | Data engine, truthful and live. Add sources `sales_daily` (180 days by SKU: units, revenue, price, forecast, lower and upper), `refunds` (id, order, amount, status, day, path toolkit or REST), `agent_runs` (decisions per agent per day), `studio_ai_runs`. Declare relations between sources (`AgRelationDefinition`). Refresh on SSE events with a 1.5 s debounce through `api.updateProperties` or `api.refresh()`; the page fetches once today. Seed 30 days of earlier decisions flagged simulated, including one refund spike, so Day 0 is never empty and the anomaly agent has something to find. Replace budget used (the sum of all five agent budgets, so $8 of $2,150 shows about 0.4%) with per-agent burn. Update README "Honesty". | `routes/register.ts` (`/api/insights`), `db/seed.ts`, `studio/data.ts`, `pages/InsightsPage.tsx` | Fresh database, open `/insights` without advancing: every widget on every page shows data; approve a payout in another tab and the Money page updates within 3 s with no reload; every field has a description | B8 | L / medium |
+| **P3.7** | Theme, layout and report design. Keep `studioTheme.withParams` (about 50 brand params). Grow the report to four pages: Operations, Money, Inventory, Live agents (decision ticker, agent roster, Studio AI activity). Add a live brief text widget fed from `kpis.summary`. Bump `STUDIO_STATE_KEY` from v4 to v5 so saved layouts do not hide the new default. Check layout at 1440×900 and 1920×1080. | `studio/initial-report.ts`, `studio/theme.ts`, `pages/InsightsPage.tsx` | A fresh browser profile shows the designed report; no widget overlaps or is cut off at either size (screenshot check); Reset layout restores it; every page holds at least one custom widget | B8 | M to L / low |
+| **P3.8** | Studio AI evaluation list. Write 12 prompts with expected outcomes (widget type, fields, filters) and run them on both allowed models before the freeze. | `docs/studio-ai-evals.md` (new) | At least 10 of 12 pass on the primary model; failures turn into `aiDescription` or instructions edits | none | S / low |
+| **P3.9** | Anomaly-alert flow. A server z-score over daily refund dollars (`GET /api/insights/anomalies`) raises a banner on Insights: "Refund spike 3.1 sigma above average". Its button opens a Studio AI thread with a prefilled prompt for refund-sentinel. Maps to AG's own "anomaly-alert agent" project idea. Check the chat-session API in the typings before building. | `pages/InsightsPage.tsx`, `routes/register.ts`, `studio/agents/refundSentinel.ts` | On the seeded history the banner appears on Day 0; clicking it starts a thread whose first message is the prefilled prompt | B8 | M / medium |
+
+---
+
+## Phase 4: Deploy, video and Devpost (P4.1 to P4.3 from 3 Nov; P4.4 to P4.7 Mon 9 to Tue 10 Nov)
+
+**Goal:** a judge who opens the Render URL, the video and the Devpost page in any order sees one coherent, working product. The rules require a public repo with an OSI licence visible in About, a working hosted demo or run instructions, a text description, the AI tools used, a YouTube video under 3 minutes, and free testing access with credentials until judging ends on 15 Dec.
+
+**Exit gate:** two consecutive clean runs of the video script on the Render URL, and the Devpost form saved as a draft.
+
+| ID | Work item and prize rationale | Files and env | Acceptance (testable) | Demo beat | Effort / risk |
+| --- | --- | --- | --- | --- | --- |
+| **P4.1** | Cold start and bundle size. The production build ships one 7.3 MB JavaScript file, which hurts the first impression on a cold Render instance. Lazy-load `/control` and `/insights`, split AG Grid, AG Charts and AG Studio into separate chunks, show a skeleton while a chunk loads. | `apps/web/src/App.tsx`, `apps/web/vite.config.ts` | `/` and `/shop` load under 1 MB of JavaScript (DevTools network tab); `/control` and `/insights` fetch their chunk on first visit; no layout jump while loading | all | M / low |
+| **P4.2** | Render production config and plan decision. Set `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID`, `PUBLIC_BASE_URL`, `LLM_PROVIDER` with its key, `AG_GRID_LICENSE_KEY`, `AG_STUDIO_LICENSE_KEY`, `AG_STUDIO_OPENAI_API_KEY`, `STUDIO_AI_DAILY_CAP`; generated `ADMIN_TOKEN`. Register the webhook for the Render URL. Decide by 6 Nov between the free plan with keep-warm (`KEEPWARM=true`, `DEMO_URL`, on from 10 Nov to 15 Dec) and an always-on paid instance paid from the $50 Render credit (check current pricing in the dashboard). Stay on PGlite: the README plans a free Postgres on 15 or 16 Nov, after the deadline, when changes may not be allowed. | `render.yaml`, `README.md`, GitHub variables | A new Blueprint deploy works with only secrets typed in; `/healthz` shows `dryRun:false`; a live checkout from a phone is confirmed by webhook; a cold restart reseeds and refunds still hit live captures (P1.4) | B2 | M / medium |
+| **P4.3** | Shared-demo safeguards. Every mutating endpoint except reset is open on a public URL. Rate-limit `POST /api/sim/advance` (6 per minute), clamp policy values on `PUT /api/policies/:agent`, and allow a public reset with a 60 s cooldown behind `DEMO_PUBLIC_RESET=1` (or publish the token in the testing instructions). Add a banner: "shared demo, resets on cold start". | `routes/register.ts`, `index.ts`, `SimControls.tsx` | The 7th Advance in a minute returns 429 and the UI shows it; an `autoApproveMax` above the clamp returns 422; reset works once a minute without a token when the flag is on | none | S to M / low |
+| **P4.4** | Video, under 3:00. Rewrite `docs/video-script.md` to the beats below; rehearse twice on the Render URL; record at 1080p with captions and no music (or YouTube Audio Library); upload as public on YouTube; check playback logged out. | `docs/video-script.md` | Runtime 2:55 or less; every money beat uses live sandbox ids; only the PayPal button shows a third-party mark; the link plays logged out | all | M / medium |
+| **P4.5** | Devpost submission. Update `docs/devpost.md`: it omits the Studio Agent Framework and OpenAI. AI tools: Gemini, Groq, OpenAI through the Studio harness, PayPal Agent Toolkit 1.11.0, Cursor. Categories: Overall, Best Use of PayPal + AI, Best Use of Agentic Commerce, Best Use of AG Grid, Render, Best Demo Delivery, Most Impactful. Add testing instructions with the sandbox buyer login, the hosted URL, the repo, three screenshots (control room, PayPal confirmation, Insights), and a plain statement of what is simulated. | `docs/devpost.md`, `README.md` | Every checkbox in `docs/devpost.md` ticked; MIT shows in the repo About panel; testing instructions let a stranger complete one checkout and one approval | none | S to M / low |
+| **P4.6** | Clean-clone QA and freeze. On a fresh clone run `npm ci`, `npm run build`, `npm start`. Add a Playwright smoke test over `/`, `/shop`, `/control`, `/insights` at 1440×900 and a reset-and-run twice check. Tag `v1.0-submission`. | `e2e/smoke.spec.ts` (new), `docs/qa-checklist.md` (new) | Two consecutive green runs against the Render URL; no console errors on the four routes; screenshots saved | all | M / low |
+| **P4.7** | Submit on Tue 10 Nov, two days early. Confirm the YouTube link, the team representative, the categories and the demo URL, then keep 11 and 12 Nov free for fixes. | Devpost form | Submission shows as submitted, not draft | none | S / low |
+
+### Video beats (target 2:55)
+
+| Beat | Time | On screen | Message |
+| --- | --- | --- | --- |
+| B1 | 0:00 to 0:12 | Landing page | Maya runs a one-person candle shop; the morning disappears into tickets, stock and refunds |
+| B2 | 0:12 to 0:35 | Shop, PayPal sandbox checkout as the test buyer, success card, Orders grid row turning confirmed | A real PayPal sandbox payment; the webhook confirms it (cut the wait, label it) |
+| B3 | 0:35 to 1:05 | Advance; Decisions queue; the $8 refund card with its tool trace | The model chose `create_refund` through the PayPal Agent Toolkit; policy auto-approved it under $15 |
+| B4 | 1:05 to 1:30 | The $45 refund: edit to $20, approve, PayPal id, confirmed | Maya stays in control; PayPal confirms the edited amount |
+| B5 | 1:30 to 1:42 | The blocked NIGHT discount and its reasons; Ask the agent why | The gate blocks risk and says why |
+| B6 | 1:42 to 2:00 | Approve the CITRUS payout, it goes UNCLAIMED, roll it back, then roll back the FIG price | Unclaimed payouts and prices can be undone; refunds cannot, and the UI says so |
+| B7 | 2:00 to 2:10 | Command bar: "show refunds over $20" | AG Grid AI Toolkit turns a sentence into grid state |
+| B8 | 2:10 to 2:42 | Insights: anomaly banner, Ask Studio, the custom agent builds the refund-anomaly widget, the audit log shows its tool calls | Custom widgets, ShopCrew theme and a custom Studio agent built on AG Studio |
+| B9 | 2:42 to 2:55 | Pause all agents; stack and repo URL | One switch stops every agent; PayPal, AG Grid, Render |
+
+---
+
+## Phase 5: Visual polish (Sat 7 to Sun 8 Nov, fixed two-day box)
+
+Design is about a fifth of the Stage Two score, so this phase is protected rather than dropped. It starts at the feature freeze (Fri 6 Nov evening) whatever is unfinished, and ends Sun 8 Nov so the video is recorded on the final look on Mon 9 Nov. Studio theming is already part of P3.7; this phase touches only the shop, landing page and control room chrome.
+
+| ID | Work item | Files | Acceptance |
+| --- | --- | --- | --- |
+| **P5.1** | Landing page: replace the static sample feed with live `/api/kpis` numbers, a real hero, working links, a "Try the demo" button to `/shop` | `LandingPage.tsx`, `styles/app.css` | No placeholder links; numbers match `/api/kpis` |
+| **P5.2** | Shop: candle imagery drawn from each product's hue, a consistent type scale, responsive grid, styled cart and success card | `ShopPages.tsx`, `styles/app.css` | Fresh-eyes review at 1440×900 and a 390 px phone width finds no unstyled element |
+| **P5.3** | Control room chrome: spacing and density, empty and loading states, focus rings, consistent badges | `ControlRoomPage.tsx`, `styles/app.css`, `grids/*` | No horizontal overflow at 1440×900; keyboard focus visible on every control |
+| **P5.4** | Favicon, social preview image, README screenshots; refresh or delete `docs/shopcrew-overview.html` | `apps/web/index.html`, `README.md`, `docs/` | Link previews show the image; README images load |
+
+---
+
+## Appendix: AG Studio deep dive
+
+The design in one line: the browser hosts Studio with a ShopCrew theme and widget registry; every AI call goes through the Fastify proxy, which holds the key and enforces limits; telemetry and data flow back through the same server. Field names below were checked against the `ag-studio` 3.0.0 typings; exact call signatures should be confirmed against the Studio docs while building.
+
+### Studio data and AI flow
+
+The browser never holds the OpenAI key; telemetry and refreshed rows come back through the same server.
+
+### Custom widgets (P3.5)
+
+| Widget id | What it shows | Data mapping | Fields used |
+| --- | --- | --- | --- |
+| `refund-anomaly-strip` | Refund dollars per day, days above N sigma marked | category (day), value (sum), optional series (agent); format sigma default 2 | `refunds.day`, `refunds.amount`, `refunds.agent` |
+| `payout-pipeline` | Proposed, approved, submitted, UNCLAIMED, success, canceled with dollars | category (status), value (sum amount) | `payouts.status`, `payouts.amount` |
+| `budget-burn` | Per agent: spent, pending exposure, daily budget | category (agent), value (spend), target (budget) | `policies.agent`, `policies.dailyBudget`, `decisions.amount` |
+| `cover-heat` | Days of cover per SKU against supplier lead time | category (sku), value (cover), threshold (lead time) | `inventory.sku`, `inventory.daysOfCover`, `inventory.leadTimeDays` |
+| `negotiation-scoreboard` | Savings per supplier against list price, rounds used | category (supplier), value (saving) | new negotiations source built from purchase-order transcripts |
+| `decision-ticker` | Newest decisions with status chips | rows (decision summary), sorted by day | `decisions.summary`, `decisions.status`, `decisions.amount`, `decisions.agent` |
+
+Kept from today: `pulse-meter` (rebind to per-agent budget burn) and `status-stack` (recolour from theme tokens). The Studio AI activity view on the Live agents page is a built-in grid over `studio_ai_runs`, not a custom widget. Cross-filtering between custom widgets depends on what `widgetApi` exposes; until confirmed, use the built-in button-filter widget as the shared filter.
+
+### Agent roster (P3.1)
+
+| Agent id | Role | Hands off to | Tools |
+| --- | --- | --- | --- |
+| `shopcrew-lead` (primary, `s.undefined()` params) | Reads the request, chooses a specialist; a copy of `builtIn.lead` with a wider hand-off list | data, page, planning, widget, refund-sentinel, cash-planner, reorder-risk | Studio tools plus `delegateTo` |
+| `refund-sentinel` (params: `windowDays`) | Finds unusual refund behaviour and asks widget to build the strip | widget | `executeQuery`, `viewSchema`, custom `get_refund_anomalies` (server z-scores) |
+| `cash-planner` | Compares budgets, pending approvals and payouts; answers "will we run out today?" | widget | `executeQuery`, custom `get_cash_runway` |
+| `reorder-risk` | Flags SKUs that stock out before lead time | widget | `executeQuery`, custom `get_reorder_risk` |
+| built-in data, page, planning, widget | Re-pointed with ShopCrew instructions: prefer ShopCrew widgets, USD, sim-day wording | n/a | Studio tools |
+
+**Prompt starters:** "Is any agent refunding unusually much?", "Build me a payout pipeline", "Will we stay inside today's budgets?", "Which SKUs stock out before the supplier can deliver?", "What is waiting for my approval?", "Explain what the agents did today".
+
+### Mapping to AG's own project ideas
+
+- **Anomaly-alert agent** (refund spikes): refund-sentinel plus the banner in P3.9.
+- **Natural-language finance agent** that builds widgets: cash-planner plus shopcrew-lead building widgets from a sentence.
+- **Storefront analytics** (revenue by product, refund tiles): the Operations and Money pages over `sales_daily` and `refunds`.
+- **Nudge-bot with a scoreboard:** negotiation-scoreboard takes this role for supplier price negotiation; no reminder bot is built.
+
+---
+
+## Kill list: do not build before 12 Nov
+
+- Other sponsor prizes (APIMatic, Bryntum, Channel3, Postman, Zapier, Elastic, KERNEL, Astropods): none fits the story and each costs integration time.
+- A Gemini adapter for Studio written from scratch. Contingency only, if no funded OpenAI key exists by 31 Oct.
+- PayPal MCP server and commerce tools (`search_product`, `create_cart`, `checkout_cart`): only if question 4 below is answered yes before 1 Nov.
+- More agents, multi-currency, real authentication, multi-tenant accounts, subscriptions, a mobile layout.
+- Free Render Postgres on 15 or 16 Nov: stay on PGlite.
+- LLM-driven supplier negotiation: the deterministic three-round negotiation already demos well.
+- **First cuts if behind:** P2.9 (policy what-if), P3.4 (thread history), P3.9 (anomaly banner), in that order.
+
+---
+
+## Open questions
+
+Questions 1 to 4 extend `docs/discord-questions.md` (PayPal Discord: [developer.paypal.com/discord](https://developer.paypal.com/discord); AG Grid team there).
+
+1. AG Grid: can participants get an Enterprise, Charts and Studio licence valid through 15 Dec, or a key issued on or after 1 Nov? A 45-day trial started now ends about 10 Dec.
+2. AG Grid: the Devpost page names "Best Use of AG Grid", the AG Grid blog names "Best Use of AG Studio". Which is judged, and does a custom agent plus a custom OpenAI adapter count as the Agent Framework entry?
+3. PayPal: are Payouts enabled by default on sandbox REST apps, and does a payout to an email with no account reliably stay UNCLAIMED?
+4. PayPal: is the remote MCP server with commerce tools open to participants, and is in-process `@paypal/agent-toolkit` 1.11.0 an equally valid "Agent Toolkit" entry?
+5. PayPal / Devpost: may sandbox buyer credentials appear in the testing instructions, and are code or deploy changes allowed after 12 Nov?
+6. Render: can the $50 credit pay for an always-on instance for the judging window?
+7. AG Studio: does `widgetApi` let a custom widget set filters on other widgets, and how does a host start a chat thread with a prefilled prompt? (Both affect P3.9 and P3.5.)
+8. PayPal Agent Toolkit: does 1.11.0 expose tool schemas (`getTools()`) usable by the AI SDK, as P1.8 assumes?
+
+---
+
+## Sources
+
+Pages opened for this plan, as of 26 Oct 2026: Devpost overview, rules, AG Grid prize page, AG Grid blog post, AG Studio docs home, custom agents page, PayPal + AG Grid boilerplate, and the ShopCrew repo at its latest commit. The `ag-studio` 3.0.0 package typings were read for the Agent Framework API. The boilerplate is a Next.js transactions viewer and does not set up Studio, so it was not used as a pattern.

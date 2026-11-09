@@ -5,7 +5,9 @@ import { api, type OrderRow } from "../../api/client";
 import { onLive } from "../../hooks/useLiveEvents";
 import { useSimTime } from "../../hooks/SimTimeContext";
 import { openIntegratedChart } from "../chartHelpers";
+import { formatMoney, PayPalRef } from "../renderers";
 import { gridTheme } from "../theme";
+import { useGridState } from "../useGridState";
 
 function pad(n: number) {
   return String(n).padStart(2, "0");
@@ -22,10 +24,11 @@ function msOfDayFromIso(iso: string) {
   return date.getUTCHours() * 3_600_000 + date.getUTCMinutes() * 60_000;
 }
 
-export function OrdersGrid() {
+export function OrdersGrid({ onGrid, focusId }: { onGrid?: (api: GridApi) => void; focusId?: string | null } = {}) {
   const { simDay, msOfDay, autorun, paused } = useSimTime();
   const [allRows, setAllRows] = useState<OrderRow[]>([]);
   const apiRef = useRef<GridApi | null>(null);
+  const gridState = useGridState("orders");
 
   const columnDefs: ColDef<OrderRow>[] = [
     { field: "simDay", headerName: "Day", sort: "desc", width: 90, chartDataType: "category", enableRowGroup: true },
@@ -40,10 +43,20 @@ export function OrdersGrid() {
     { field: "createdAt", headerName: "Date", valueFormatter: (p) => (p.value ? new Date(p.value).toLocaleDateString(undefined, { timeZone: "UTC" }) : "") },
     { field: "customer" },
     { field: "source", chartDataType: "category", enableRowGroup: true, filter: "agSetColumnFilter" },
-    { field: "status", rowGroup: true, hide: true, chartDataType: "category" },
+    {
+      field: "status",
+      headerName: "Status",
+      valueGetter: (p) => {
+        if (p.data?.confirmedAt) return `${p.data.status} · confirmed`;
+        if (p.data?.paypalCaptureId && !String(p.data.paypalCaptureId).startsWith("DRY")) return `${p.data.status} · awaiting webhook`;
+        return p.data?.status ?? "";
+      },
+      chartDataType: "category",
+      enableRowGroup: true,
+    },
     {
       field: "total",
-      valueFormatter: (p) => `$${Number(p.value ?? 0).toFixed(2)}`,
+      valueFormatter: (p) => formatMoney(Number(p.value ?? 0)),
       chartDataType: "series",
       enableValue: true,
       aggFunc: "sum",
@@ -51,14 +64,31 @@ export function OrdersGrid() {
     {
       field: "refundedTotal",
       headerName: "Refunded",
-      valueFormatter: (p) => `$${Number(p.value ?? 0).toFixed(2)}`,
+      valueFormatter: (p) => formatMoney(Number(p.value ?? 0)),
       chartDataType: "series",
       enableValue: true,
       aggFunc: "sum",
     },
-    { field: "paypalOrderId", headerName: "PayPal order" },
-    { field: "paypalCaptureId", headerName: "Capture" },
+    {
+      headerName: "Amount spark",
+      colId: "amountSpark",
+      width: 120,
+      cellRenderer: "agSparklineCellRenderer",
+      cellRendererParams: { sparklineOptions: { type: "bar" } },
+      valueGetter: (p) => [Number(p.data?.total ?? 0), Number(p.data?.refundedTotal ?? 0)],
+    },
+    { field: "paypalOrderId", headerName: "PayPal order", cellRenderer: PayPalRef },
+    { field: "paypalCaptureId", headerName: "Capture", cellRenderer: PayPalRef },
   ];
+
+  useEffect(() => {
+    if (!focusId || !apiRef.current) return;
+    const node = apiRef.current.getRowNode(focusId);
+    if (!node) return;
+    apiRef.current.ensureNodeVisible(node, "middle");
+    node.setSelected(true);
+  }, [focusId, allRows]);
+
 
   useEffect(() => {
     void api.orders().then(setAllRows);
@@ -155,7 +185,13 @@ export function OrdersGrid() {
               { statusPanel: "agAggregationComponent", statusPanelParams: { aggFuncs: ["sum", "avg", "count"] }, align: "right" },
             ],
           }}
-          onGridReady={(e) => { apiRef.current = e.api; }}
+          initialState={gridState.initialState}
+          onStateUpdated={gridState.onStateUpdated}
+          onGridReady={(e) => {
+            apiRef.current = e.api;
+            gridState.onGridReady(e);
+            onGrid?.(e.api);
+          }}
         />
       </div>
     </>

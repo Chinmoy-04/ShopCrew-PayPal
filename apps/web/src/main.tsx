@@ -1,13 +1,8 @@
-import { ModuleRegistry } from "ag-grid-community";
-import { AllEnterpriseModule, LicenseManager } from "ag-grid-enterprise";
-import { AgChartsEnterpriseModule } from "ag-charts-enterprise";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./styles/app.css";
-
-ModuleRegistry.registerModules([AllEnterpriseModule.with(AgChartsEnterpriseModule)]);
 
 async function loadConfig(attempts = 8) {
   for (let i = 0; i < attempts; i++) {
@@ -23,7 +18,6 @@ async function loadConfig(attempts = 8) {
 }
 
 const config = await loadConfig();
-if (config.agGridLicenseKey) LicenseManager.setLicenseKey(config.agGridLicenseKey);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

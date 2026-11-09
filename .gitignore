@@ -6,6 +6,8 @@ dist
 *.log
 .DS_Store
 coverage
+shopcrew-pglite*.tar.gz
+shopcrew-capture-pool*.json
 apps/server/.data
 apps/web/dist
 apps/server/dist

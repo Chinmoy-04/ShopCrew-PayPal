@@ -5,6 +5,7 @@ import { nowIso, writeAudit } from "../db/audit.js";
 import { db } from "../db/client.js";
 import { actions, orders, payouts, priceHistory, products, proposals, purchaseOrders, refunds, simState } from "../db/schema.js";
 import { proposalView } from "../db/views.js";
+import { autoRegisterLiveCapture, isCaptureExhausted, markPoolRefund } from "../paypal/capturePool.js";
 import { PayPalError, paypal } from "../paypal/rest.js";
 import { callToolkit } from "../paypal/toolkit.js";
 import { applyPayPalEvent } from "../paypal/events.js";
@@ -113,12 +114,23 @@ async function refundCapture(row: typeof proposals.$inferSelect, args: Record<st
   const value = money(Number(amount?.value ?? row.amount ?? 0));
   const [order] = await database.select().from(orders).where(eq(orders.paypalCaptureId, captureId));
   if (!order) throw new Error("No local order matches that capture.");
-  const dry = !paypal.configured() || captureId.startsWith("DRY");
+
+  const exhausted = !captureId.startsWith("DRY") && isCaptureExhausted(captureId, order.total, order.refundedTotal, value);
+  const dry = !paypal.configured() || captureId.startsWith("DRY") || exhausted;
   let paypalRefundId = "";
   let response: unknown = null;
+  let executionPath: "dry" | "toolkit" | "rest" | "dry_exhausted" = dry ? (exhausted ? "dry_exhausted" : "dry") : "toolkit";
+
   if (dry) {
-    paypalRefundId = `DRY-RFD-${row.id.slice(0, 8)}`;
-    response = { id: paypalRefundId, status: "COMPLETED", dryRun: true };
+    paypalRefundId = exhausted ? `DRY-EXH-${row.id.slice(0, 8)}` : `DRY-RFD-${row.id.slice(0, 8)}`;
+    response = {
+      id: paypalRefundId,
+      status: "COMPLETED",
+      dryRun: true,
+      executionPath,
+      idempotencyKey,
+      reason: exhausted ? "DRY: capture exhausted" : "dry-run",
+    };
   } else {
     const payload = {
       capture_id: captureId,
@@ -130,30 +142,58 @@ async function refundCapture(row: typeof proposals.$inferSelect, args: Record<st
       const parsed = response as { id?: string; error?: string; raw?: string };
       if (!parsed?.id) throw new Error(typeof parsed?.raw === "string" ? parsed.raw : "Toolkit refund did not return an id");
       paypalRefundId = parsed.id;
+      executionPath = "toolkit";
+      response = { ...(response as object), executionPath, idempotencyKey };
     } catch (error) {
-      response = await paypal.requestWithRetry(
-        "POST",
-        `/v2/payments/captures/${captureId}/refund`,
-        { amount: { currency_code: "USD", value: value.toFixed(2) }, note_to_payer: payload.note_to_payer },
-        idempotencyKey,
-      );
-      paypalRefundId = String((response as { id?: string }).id ?? "");
-      response = { ...(response as object), fallback: "rest", toolkitError: error instanceof Error ? error.message : "toolkit failed" };
+      try {
+        response = await paypal.requestWithRetry(
+          "POST",
+          `/v2/payments/captures/${captureId}/refund`,
+          { amount: { currency_code: "USD", value: value.toFixed(2) }, note_to_payer: payload.note_to_payer },
+          idempotencyKey,
+        );
+        paypalRefundId = String((response as { id?: string }).id ?? "");
+        executionPath = "rest";
+        response = {
+          ...(response as object),
+          executionPath,
+          idempotencyKey,
+          fallback: "rest",
+          toolkitError: error instanceof Error ? error.message : "toolkit failed",
+        };
+      } catch (restError) {
+        if (restError instanceof PayPalError && restError.status >= 400 && restError.status < 500) {
+          throw new Error(restError.message || `PayPal refund failed (${restError.status})`);
+        }
+        throw restError;
+      }
     }
   }
+
   await database.insert(refunds).values({
     id: crypto.randomUUID(),
     orderId: order.id,
     proposalId: row.id,
     paypalRefundId,
     amount: value,
-    status: dry ? "PENDING" : "PENDING",
+    status: "PENDING",
     createdAt: nowIso(),
     confirmedAt: null,
   });
-  await database.update(orders).set({ refundedTotal: money(order.refundedTotal + value), status: value + order.refundedTotal + 0.001 >= order.total ? "REFUNDED" : "PARTIALLY_REFUNDED" }).where(eq(orders.id, order.id));
+  await database.update(orders).set({
+    refundedTotal: money(order.refundedTotal + value),
+    status: value + order.refundedTotal + 0.001 >= order.total ? "REFUNDED" : "PARTIALLY_REFUNDED",
+  }).where(eq(orders.id, order.id));
+  if (!captureId.startsWith("DRY")) markPoolRefund(captureId, value);
   const orderView = (await database.select().from(orders).where(eq(orders.id, order.id)))[0];
   bus.emit({ type: "order.upserted", order: orderView });
+
+  // Persist path on the proposal inputs for the detail card.
+  const priorInputs = (row.inputsJson ?? {}) as Record<string, unknown>;
+  await database.update(proposals).set({
+    inputsJson: { ...priorInputs, executionPath, idempotencyKey, paypalRefundId },
+  }).where(eq(proposals.id, row.id));
+
   if (dry) {
     setTimeout(() => {
       void applyPayPalEvent({
@@ -164,7 +204,26 @@ async function refundCapture(row: typeof proposals.$inferSelect, args: Record<st
       }, true);
     }, 1200);
   }
-  return { status: "submitted" as const, paypalRef: paypalRefundId, response, message: dry ? `Dry-run refund ${paypalRefundId} submitted.` : `Refund ${paypalRefundId} submitted to PayPal.` };
+
+  const pathLabel =
+    executionPath === "toolkit"
+      ? "Executed via Agent Toolkit create_refund"
+      : executionPath === "rest"
+        ? "Executed via REST fallback"
+        : executionPath === "dry_exhausted"
+          ? "DRY: capture exhausted"
+          : `Dry-run refund ${paypalRefundId} submitted.`;
+
+  return {
+    status: "submitted" as const,
+    paypalRef: paypalRefundId,
+    response,
+    message: exhausted
+      ? `DRY: capture exhausted — simulated refund ${paypalRefundId}.`
+      : dry
+        ? `Dry-run refund ${paypalRefundId} submitted.`
+        : `${pathLabel}; refund ${paypalRefundId} submitted to PayPal.`,
+  };
 }
 
 async function paySupplier(row: typeof proposals.$inferSelect, args: Record<string, unknown>, idempotencyKey: string) {
@@ -172,7 +231,8 @@ async function paySupplier(row: typeof proposals.$inferSelect, args: Record<stri
   const amount = money(Number(args.amount ?? row.amount ?? 0));
   const receiver = String(args.receiver ?? "");
   const purchaseOrderId = String(args.purchase_order_id ?? "");
-  const dry = !paypal.configured() || receiver.endsWith("@shopcrew.test");
+  // Dry-run only when PayPal is unconfigured (not based on email domain).
+  const dry = !paypal.configured();
   let batchId = "";
   let itemId = "";
   let status = "SUCCESS";
@@ -180,7 +240,7 @@ async function paySupplier(row: typeof proposals.$inferSelect, args: Record<stri
   if (dry) {
     batchId = `DRY-BATCH-${row.id.slice(0, 8)}`;
     itemId = `DRY-ITEM-${row.id.slice(0, 8)}`;
-    status = receiver.includes("unclaimed") ? "UNCLAIMED" : "SUCCESS";
+    status = receiver.toLowerCase().includes("unclaimed") ? "UNCLAIMED" : "SUCCESS";
     response = { batch_header: { payout_batch_id: batchId }, dryRun: true, status };
   } else {
     const payload = {
@@ -199,12 +259,7 @@ async function paySupplier(row: typeof proposals.$inferSelect, args: Record<stri
         },
       ],
     };
-    try {
-      response = await paypal.requestWithRetry("POST", "/v1/payments/payouts", payload, idempotencyKey);
-    } catch (error) {
-      if (error instanceof PayPalError && error.status === 422) throw error;
-      throw error;
-    }
+    response = await paypal.requestWithRetry("POST", "/v1/payments/payouts", payload, idempotencyKey);
     const body = response as { batch_header?: { payout_batch_id?: string; batch_status?: string }; items?: { payout_item_id?: string; transaction_status?: string }[] };
     batchId = body.batch_header?.payout_batch_id ?? "";
     itemId = body.items?.[0]?.payout_item_id ?? "";
@@ -236,3 +291,6 @@ async function paySupplier(row: typeof proposals.$inferSelect, args: Record<stri
   }
   return { status: "submitted" as const, paypalRef: itemId || batchId, response, message: `Payout ${status} to ${receiver}.` };
 }
+
+/** Exported for tests — auto-register is also called from saveOrder. */
+export { autoRegisterLiveCapture };

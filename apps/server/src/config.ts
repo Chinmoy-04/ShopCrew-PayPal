@@ -41,7 +41,7 @@ export const settings = {
     webhookId: env("PAYPAL_WEBHOOK_ID"),
   }),
   supplierEmail: () => env("SUPPLIER_EMAILS", "acme-supplies@personal.example.com").split(",")[0].trim(),
-  unclaimedEmail: () => env("UNCLAIMED_SUPPLIER_EMAIL", "unclaimed-supplier@shopcrew.test"),
+  unclaimedEmail: () => env("UNCLAIMED_SUPPLIER_EMAIL", "unclaimed-supplier@shopcrew.example"),
   agGridLicense: () => env("AG_GRID_LICENSE_KEY"),
   agStudioLicense: () => env("AG_STUDIO_LICENSE_KEY"),
   /** OpenAI key for AG Studio AI (prefer AG_STUDIO_OPENAI_API_KEY, else OPENAI_API_KEY). */
@@ -52,4 +52,5 @@ export const settings = {
       .map((m) => m.trim())
       .filter(Boolean),
   databaseUrl: () => env("DATABASE_URL"),
+  demoPublicReset: () => env("DEMO_PUBLIC_RESET") === "1",
 };

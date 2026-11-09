@@ -34,15 +34,12 @@ const operations: AgPageState<ShopCrewRegistry> = {
   id: "operations",
   widgets: {
     brief: {
-      type: "text",
-      dataMapping: {},
+      type: "value",
+      dataMapping: { value: [{ id: "snapshot.brief" }] },
       format: {
-        style: {
-          text:
-            "ShopCrew operations — Status stack and Budget pulse below. " +
-            "Edit report → Widgets → ShopCrew to drag more. Use Moves money to filter charts.",
-          typography: typography(14),
-        },
+        title: { enabled: true, text: "Live brief", typography: typography(13, "bold") },
+        caption: { enabled: false, text: "", typography: typography(0) },
+        style: { typography: typography(14) },
       },
     },
     "kpi-pending": kpi("Pending approvals", sum("snapshot.pending")),
@@ -194,17 +191,36 @@ const money: AgPageState<ShopCrewRegistry> = {
         style: { warnAt: 0.6, dangerAt: 0.85, valueFontSize: 32, unit: "%" },
       },
     },
+    "payout-pipeline": {
+      type: "payout-pipeline",
+      dataMapping: {
+        category: [{ id: "payouts.status" }],
+        value: [sum("payouts.amount")],
+      },
+      format: title("Payout pipeline"),
+    },
+    "budget-burn": {
+      type: "budget-burn",
+      dataMapping: {
+        category: [{ id: "budget_burn.agent" }],
+        value: [sum("budget_burn.spent")],
+        target: [sum("budget_burn.dailyBudget")],
+      },
+      format: title("Per-agent budget burn"),
+    },
   },
   widgetLayout: {
     "kpi-revenue": at(0, 0, 6, 6),
     "kpi-order-total": at(6, 0, 6, 6),
     "kpi-refunded": at(12, 0, 6, 6),
     "kpi-payouts": at(18, 0, 6, 6),
-    "orders-by-source": at(0, 6, 8, 16),
-    "orders-by-day": at(8, 6, 8, 16),
-    "budget-gauge": at(16, 6, 4, 16),
-    "budget-pulse": at(20, 6, 4, 16),
-    "payout-grid": at(0, 22, 24, 18),
+    "orders-by-source": at(0, 6, 8, 14),
+    "orders-by-day": at(8, 6, 8, 14),
+    "budget-gauge": at(16, 6, 4, 14),
+    "budget-pulse": at(20, 6, 4, 14),
+    "payout-pipeline": at(0, 20, 12, 12),
+    "budget-burn": at(12, 20, 12, 12),
+    "payout-grid": at(0, 32, 24, 16),
   },
 };
 
@@ -264,20 +280,90 @@ const stock: AgPageState<ShopCrewRegistry> = {
       },
       format: title("Agent policies"),
     },
+    "cover-heat": {
+      type: "cover-heat",
+      dataMapping: {
+        category: [{ id: "inventory.sku" }],
+        value: [sum("inventory.daysOfCover")],
+        threshold: [sum("inventory.leadTimeDays")],
+      },
+      format: title("Cover vs lead time"),
+    },
   },
   widgetLayout: {
     "kpi-skus": at(0, 0, 6, 6),
     "kpi-units": at(6, 0, 6, 6),
     "reorder-donut": at(12, 0, 12, 14),
     "stock-bars": at(0, 6, 12, 14),
-    "inventory-grid": at(0, 20, 16, 18),
-    "policy-grid": at(16, 20, 8, 18),
+    "cover-heat": at(0, 20, 24, 12),
+    "inventory-grid": at(0, 32, 16, 16),
+    "policy-grid": at(16, 32, 8, 16),
+  },
+};
+
+const liveAgents: AgPageState<ShopCrewRegistry> = {
+  id: "live-agents",
+  widgets: {
+    "decision-ticker": {
+      type: "decision-ticker",
+      dataMapping: {
+        rows: [
+          { id: "decisions.summary" },
+          { id: "decisions.status" },
+          { id: "decisions.amount" },
+          { id: "decisions.agent" },
+          { id: "decisions.day" },
+        ],
+      },
+      format: { ...title("Decision ticker"), style: { maxRows: 12 } },
+    },
+    "agent-roster": {
+      type: "grid",
+      dataMapping: {
+        cols: [
+          { id: "agent_runs.agent" },
+          { id: "agent_runs.day" },
+          sum("agent_runs.decisions"),
+          sum("agent_runs.spend"),
+        ],
+      },
+      format: title("Agent roster (runs by day)"),
+    },
+    "studio-ai-activity": {
+      type: "grid",
+      dataMapping: {
+        cols: [
+          { id: "studio_ai_runs.createdAt" },
+          { id: "studio_ai_runs.agentId" },
+          { id: "studio_ai_runs.status" },
+          { id: "studio_ai_runs.query" },
+          sum("studio_ai_runs.toolCount"),
+        ],
+      },
+      sort: [{ field: { id: "studio_ai_runs.createdAt" }, direction: "desc" }],
+      format: title("Studio AI activity"),
+    },
+    "refund-anomaly": {
+      type: "refund-anomaly-strip",
+      dataMapping: {
+        category: [{ id: "refunds.day" }],
+        value: [sum("refunds.amount")],
+        series: [{ id: "refunds.agent" }],
+      },
+      format: { ...title("Refund anomaly strip"), style: { sigma: 2 } },
+    },
+  },
+  widgetLayout: {
+    "decision-ticker": at(0, 0, 12, 18),
+    "refund-anomaly": at(12, 0, 12, 18),
+    "agent-roster": at(0, 18, 12, 18),
+    "studio-ai-activity": at(12, 18, 12, 18),
   },
 };
 
 export const shopCrewReport: AgReportState<ShopCrewRegistry> = {
   selectedPageId: operations.id,
-  pages: [operations, money, stock],
+  pages: [operations, money, stock, liveAgents],
 };
 
-export const STUDIO_STATE_KEY = "shopcrew-studio-report-v4";
+export const STUDIO_STATE_KEY = "shopcrew-studio-report-v5";
