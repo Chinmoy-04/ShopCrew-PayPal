@@ -7,7 +7,7 @@ Nothing is deployed by editing this file. Render billing starts when you create 
 
 The Blueprint creates two resources in Oregon:
 
-- `shopcrew`: one paid Node web service, 0.5 CPU / 512 MB, serving React, Fastify, agents, SSE and PayPal endpoints.
+- `shopcrew`: one paid Node web service, 1 CPU / 2 GB, serving React, Fastify, agents, SSE and PayPal endpoints. The original 512 MB deployment exceeded its memory limit during startup.
 - `shopcrew-operations`: an on-demand Render Workflow with three registered tasks. Its parent task fans out inventory and spending analysis, combines results, and posts a report back to the app.
 
 The web service has a 1 GB persistent disk at `/var/data`. The database is `/var/data/pglite`; the refundable capture ledger is `/var/data/capture-pool.json`.
@@ -18,7 +18,7 @@ No separate static site, Redis, cron, worker, or Postgres database is required f
 
 1. Open the correct Render workspace and its Billing page. Confirm credits are applied, their expiry, and any payment-method requirement.
 2. Inspect the Blueprint's service price before approving creation. Credit balance, service compute, disk, workflow runs, build usage and bandwidth must all be considered. No fixed dollar estimate is assumed here.
-3. This YAML starts with the smallest paid web compute. After deployment, monitor memory during startup, Insights loading, and Advance day. If the process is killed for memory, upgrade compute (for example `1c-2g`) and update the YAML to match. Watch the projected total through 15 December.
+3. This YAML uses `1c-2g` because the 512 MB instance ran out of memory during startup. Review the increased monthly estimate before syncing. After deployment, monitor memory during startup, Insights loading, and Advance day. Watch the projected total through 15 December.
 4. Keep GitHub's `KEEPWARM` variable unset or false. An always-on paid service does not need that workflow.
 5. Render credits do not fund Gemini, Groq, or OpenAI calls. Configure those providers' budgets separately.
 

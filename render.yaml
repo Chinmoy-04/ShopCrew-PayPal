@@ -2,8 +2,9 @@ services:
   - type: web
     name: shopcrew
     runtime: node
-    # Paid, always-on compute. Confirm the displayed price against your credit balance.
-    plan: 0.5c-512mb
+    # 512 MB exceeded its memory limit during startup on Render.
+    # Confirm the revised price against your remaining credit balance.
+    plan: 1c-2g
     numInstances: 1
     region: oregon
     buildCommand: npm ci && npm run build
