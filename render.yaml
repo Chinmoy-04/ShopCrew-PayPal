@@ -25,10 +25,8 @@ services:
       - key: RENDER_API_KEY
         sync: false
       - key: RENDER_WORKFLOW_SLUG
-        fromService:
-          type: workflow
-          name: shopcrew-operations
-          property: slug
+        # Fill after the workflow exists; avoid a circular service dependency.
+        sync: false
       - key: LLM_PROVIDER
         value: replay
       - key: PAYPAL_ENV
@@ -82,10 +80,8 @@ services:
       - key: NODE_VERSION
         value: "22"
       - key: SHOPCREW_BASE_URL
-        fromService:
-          type: web
-          name: shopcrew
-          envVarKey: RENDER_EXTERNAL_URL
+        # Set to the web service's HTTPS URL after the first deploy.
+        sync: false
       - key: WORKFLOW_CALLBACK_TOKEN
         fromService:
           type: web

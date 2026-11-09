@@ -70,7 +70,7 @@ Use the complete [deployment and database guide](docs/deployment.md). The Bluepr
 - Review Render's displayed compute/disk/Workflow costs against your actual credits before creating resources.
 - Configure sandbox PayPal credentials, hosted URL and webhook, supplier and buyer details, and optional model/licence keys as described in the guide.
 - `POST /api/workflows/review` (admin token required) dispatches a Render operations review. It fans out inventory forecasts and spending analysis and saves a retry-safe report to the audit log. Payments still execute through the existing policy gate.
-- `RENDER_API_KEY` is set only on the web service; the Blueprint wires the Workflow slug, callback URL, and callback token.
+- `RENDER_API_KEY` is set only on the web service. After deployment, enter the Workflow slug on the web service and the web URL on the Workflow. The Blueprint shares the callback token automatically.
 - Authenticated PGlite and capture-pool backup endpoints and a restore script are documented in the guide. Keep backups private.
 
 [Render Blueprint](render.yaml) · [Full deployment guide](docs/deployment.md) · [Optional paid Postgres snippet](docs/render-postgres.yaml)

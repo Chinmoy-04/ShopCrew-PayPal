@@ -66,7 +66,7 @@ After reviewing and staging the intended files in your Git client, commit and pu
 7. The workflow build is `npm ci && npm run build -w @shopcrew/server`; start is `node apps/server/dist/workflows/index.js`. It has no HTTP health endpoint.
 8. If updating an EXISTING Blueprint, manually add new secrets in the service Environment panel: Render ignores new `sync: false` values on subsequent syncs.
 
-The Blueprint references the Workflow slug and web callback URL automatically. If Render rejects a cross-service reference during initial provisioning, create the web service and Workflow manually using the same commands, disk, and variables, then copy the Workflow slug to the web environment and the web HTTPS URL to the Workflow environment. Do not deploy a second copy of an already created service.
+The Blueprint shares only the callback token automatically. After creation, copy the Workflow slug (from its Render page) into the web service's `RENDER_WORKFLOW_SLUG`, and set the Workflow's `SHOPCREW_BASE_URL` to the web service's public HTTPS URL. Leave these two fields empty during initial creation if the form permits it; they are not needed for the website to boot. This avoids circular service references. If a placeholder is required, replace it with the actual value before dispatching any Workflow runs. Do not deploy a second copy of an already created service.
 
 ## 6. Set environment variables
 
@@ -87,7 +87,7 @@ On the **web service**:
 - `DEMO_PUBLIC_RESET=0` (Blueprint). To give judges reset access without sharing the admin token, deliberately change to `1`; this resets shared state and has a per-IP cooldown.
 - Optional provider and licence keys from step 3.
 - `RENDER_API_KEY`: generate a Render API key in your account settings. Store only on the web service; it authorizes paid Workflow dispatch. Use the least access Render offers and revoke after judging.
-- `RENDER_WORKFLOW_SLUG`: automatically wired from the Workflow; check it matches the registered resource.
+- `RENDER_WORKFLOW_SLUG`: copy the actual Workflow slug from its Render page after creation (the part before `/operationsReview`).
 - `WORKFLOW_CALLBACK_TOKEN`: generated; automatically shared with the Workflow.
 
 On the **Workflow service**, verify `SHOPCREW_BASE_URL` is the web service's HTTPS URL and `WORKFLOW_CALLBACK_TOKEN` matches the web service. Do not add PayPal, database, or model credentials there. Task compute uses Render's default Flex plan; each child has a 120-second timeout, the parent 300 seconds, and up to two retries. Usage is billed per run.
