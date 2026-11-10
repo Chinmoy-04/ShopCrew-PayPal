@@ -41,9 +41,8 @@ export function ControlRoomPage({
   agGridLicenseKey?: string;
   demoPublicReset?: boolean;
 }) {
-  useEffect(() => {
-    ensureAgGrid(agGridLicenseKey);
-  }, [agGridLicenseKey]);
+  // Child grids initialize before parent effects; register modules before rendering them.
+  ensureAgGrid(agGridLicenseKey);
   const [params, setParams] = useSearchParams();
   const initialTab = isTab(params.get("tab")) ? params.get("tab")! : "decisions";
   const [tab, setTab] = useState<Tab>(initialTab as Tab);

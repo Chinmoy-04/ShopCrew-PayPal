@@ -255,7 +255,7 @@ export function DecisionsGrid({ onGrid, focusId }: { onGrid: (api: GridApi) => v
           masterDetail
           detailCellRenderer={Detail}
           detailRowHeight={480}
-          isRowMaster={(p) => Boolean(p.data?.id && p.data.id !== "pending-total")}
+          isRowMaster={(row: Proposal) => Boolean(row?.id && row.id !== "pending-total")}
           groupDisplayType="groupRows"
           groupDefaultExpanded={1}
           enableCharts
