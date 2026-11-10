@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ColDef, GridApi, GridReadyEvent, IStatusPanelParams } from "ag-grid-community";
+import type { ColDef, GridApi, GridReadyEvent, IStatusPanelParams, IRowNode } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import { api, type Proposal } from "../../api/client";
 import { DecisionCard } from "../../components/DecisionCard";
@@ -51,7 +51,7 @@ function rollbackDisabled(row: Proposal): { disabled: boolean; title: string } {
   return { disabled: true, title: "Rollback not available" };
 }
 
-function Actions(props: { data: Proposal }) {
+function Actions(props: { data: Proposal; node: IRowNode<Proposal> }) {
   const row = props.data;
   if (!row?.id || row.id === "pending-total") return null;
   const pending = row.status === "pending_approval";
@@ -59,6 +59,9 @@ function Actions(props: { data: Proposal }) {
   const amountLabel = row.amount != null ? ` $${Number(row.amount).toFixed(2)}` : "";
   return (
     <div className="actions">
+      <button type="button" aria-label={`Toggle details: ${row.summary}`} onClick={() => props.node.setExpanded(!props.node.expanded)}>
+        Details
+      </button>
       <button disabled={!pending} title={pending ? `Approve final amount${amountLabel}` : ""} onClick={() => api.approve(row.id)}>
         Approve{pending && amountLabel ? amountLabel : ""}
       </button>
@@ -183,12 +186,13 @@ export function DecisionsGrid({ onGrid, focusId }: { onGrid: (api: GridApi) => v
       headerName: "What the agent wants",
       flex: 1,
       minWidth: 220,
-      cellRenderer: (p: { data?: Proposal; value?: string }) => (
+      cellRenderer: "agGroupCellRenderer",
+      cellRendererParams: { innerRenderer: (p: { data?: Proposal; value?: string }) => (
         <span>
           {p.data?.editedByOwner && <span className="badge edited" title="Edited by you">edited</span>}{" "}
           {p.value}
         </span>
-      ),
+      ) },
     },
     {
       field: "amount",
@@ -229,7 +233,7 @@ export function DecisionsGrid({ onGrid, focusId }: { onGrid: (api: GridApi) => v
     { field: "decidedBy", filter: "agSetColumnFilter", hide: true },
     { field: "reason", filter: "agTextColumnFilter", hide: true },
     { field: "simDay", filter: "agNumberColumnFilter", hide: true },
-    { headerName: "Actions", cellRenderer: Actions, sortable: false, filter: false, minWidth: 260, pinned: "right" },
+    { headerName: "Actions", cellRenderer: Actions, sortable: false, filter: false, minWidth: 340, pinned: "right" },
   ], []);
 
   return (
@@ -238,7 +242,7 @@ export function DecisionsGrid({ onGrid, focusId }: { onGrid: (api: GridApi) => v
         <ViewMenu api={apiRef} active={view} onSelect={setView} />
         <button type="button" className="btn" onClick={chartSpendByAgent}>Chart spend</button>
         <button type="button" className="btn" onClick={chartStatusBreakdown}>Chart status</button>
-        <span className="note">Expand a row for reasoning / tool trace / PayPal ids</span>
+        <span className="note">Open Details for reasoning and PayPal IDs. Double-click a pending Amount to edit; press Enter to save.</span>
       </div>
       {editError && <div className="error">{editError}</div>}
       <div className="grid-wrap">
