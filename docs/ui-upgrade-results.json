@@ -1,0 +1,41 @@
+{
+  "verifiedAt": "2026-11-11T12:03:33.160Z",
+  "sourceReport": ".data/ui-upgrade/final2-results.json",
+  "typecheck": "pass",
+  "build": "pass",
+  "backend": {
+    "passed": 64,
+    "total": 64,
+    "files": 17
+  },
+  "browser": {
+    "startTime": "2026-11-11T11:56:15.140Z",
+    "duration": 395751.039,
+    "expected": 336,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "projects": [
+    "chromium-desktop",
+    "chromium-mobile",
+    "firefox-desktop",
+    "firefox-mobile",
+    "webkit-desktop",
+    "webkit-mobile"
+  ],
+  "caseCount": 56,
+  "originalCaseCount": 51,
+  "missingBaselineCases": [],
+  "preservation": {
+    "checked": 79304,
+    "changed": [],
+    "missing": [],
+    "added": []
+  },
+  "notes": [
+    "All original regression specs are unchanged.",
+    "No retries or suppressed browser exception checks.",
+    "Existing provider settlement limits remain as documented in functional-verification.md."
+  ]
+}

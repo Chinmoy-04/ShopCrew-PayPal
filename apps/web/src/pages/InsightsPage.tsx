@@ -43,6 +43,7 @@ export function InsightsPage({
   const [initialState] = useState<AgReportState<ShopCrewRegistry>>(
     () => (loadSavedReport() as AgReportState<ShopCrewRegistry> | null) ?? shopCrewReport,
   );
+  const latestReport = useRef(initialState);
   const [savedNote, setSavedNote] = useState("");
   const [anomaly, setAnomaly] = useState<{ day: number; amount: number; z: number } | null>(null);
   const [prefillPrompt, setPrefillPrompt] = useState<string | null>(null);
@@ -89,6 +90,7 @@ export function InsightsPage({
 
   const onStateUpdated = useCallback((event: { state: AgReportState }) => {
     try {
+      latestReport.current = event.state as AgReportState<ShopCrewRegistry>;
       localStorage.setItem(STUDIO_STATE_KEY, JSON.stringify(event.state));
       setSavedNote("Report layout saved in this browser");
     } catch {
@@ -131,6 +133,7 @@ export function InsightsPage({
       <header className="insights-header">
         <div>
           <h1>Insights</h1>
+          <p className="insights-intro">The day's work, in view.</p>
           <p className="note">
             AG Studio report with ShopCrew widgets{studioAiEnabled ? " and custom agents" : ""}.
             {!licenseKey && " Running without a licence key (watermark OK for the hackathon)."}
@@ -147,7 +150,7 @@ export function InsightsPage({
           <button type="button" className="btn" onClick={resetReport}>
             Reset layout
           </button>
-          {savedNote && <span className="note">{savedNote}</span>}
+          {savedNote && <span className="note" role="status">{savedNote}</span>}
         </div>
       </header>
 
@@ -174,7 +177,7 @@ export function InsightsPage({
         licenseKey={licenseKey ?? ""}
         data={studioData}
         mode={mode}
-        initialState={initialState}
+        initialState={latestReport.current}
         onStateUpdated={onStateUpdated}
         ai={ai}
         widgets={widgets}

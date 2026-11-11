@@ -27,7 +27,7 @@ app.addContentTypeParser("application/json", { parseAs: "string" }, (request, bo
   }
 });
 
-await app.register(rateLimit, { max: 300, timeWindow: "1 minute" });
+await app.register(rateLimit, { max: process.env.NODE_ENV === "test" ? 10000 : 300, timeWindow: "1 minute", allowList: (request) => !request.url.startsWith("/api/") });
 await registerRoutes(app);
 app.setErrorHandler((error, _request, reply) => {
   const statusCode = (error as { statusCode?: number }).statusCode ?? 500;

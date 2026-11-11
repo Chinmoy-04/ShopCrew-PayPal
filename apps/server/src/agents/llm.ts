@@ -55,7 +55,7 @@ export async function chooseTool(
       prompt,
       schema: csToolChoiceSchema,
     } as never);
-    const value = (result.object as CsToolChoice) ?? fallback;
+    const value = csToolChoiceSchema.parse(result.object);
     if (process.env.LLM_RECORD === "1") rememberObject(system, prompt, value);
     return value;
   } catch {
@@ -69,7 +69,7 @@ export async function chooseTool(
           prompt,
           schema: csToolChoiceSchema,
         } as never);
-        return (result.object as CsToolChoice) ?? fallback;
+        return csToolChoiceSchema.parse(result.object);
       } catch {
         return fallback;
       }

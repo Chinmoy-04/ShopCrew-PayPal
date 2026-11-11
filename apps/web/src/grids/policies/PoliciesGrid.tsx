@@ -40,9 +40,10 @@ function BudgetMeter(props: ICellRendererParams<Policy, number> & { kpis: Kpis |
   );
 }
 
-export function PoliciesGrid() {
+export function PoliciesGrid({ onGrid }: { onGrid?: (api: import("ag-grid-community").GridApi) => void } = {}) {
   const [rows, setRows] = useState<Policy[]>([]);
   const [kpis, setKpis] = useState<Kpis | null>(null);
+  const [saveError, setSaveError] = useState("");
 
   const columnDefs: ColDef<Policy>[] = [
     { field: "agent", minWidth: 120 },
@@ -95,10 +96,18 @@ export function PoliciesGrid() {
 
   return (
     <div className="grid-wrap">
-      <AgGridReact
+      {saveError && <div className="error" role="alert">{saveError}</div>}
+      <AgGridReact defaultColDef={{ filter: true, sortable: true, resizable: true }}
         theme={gridTheme}
+        onGridReady={(e) => onGrid?.(e.api)}
         rowData={rows}
-        columnDefs={columnDefs}
+        columnDefs={columnDefs.map(col => col.editable && col.field ? { ...col, onCellValueChanged: (e) => {
+          if (!e.data || !col.field) return;
+          const previous = { ...e.data, [col.field]: e.oldValue };
+          void api.savePolicy(e.data.agent, { [col.field]: Number(e.newValue) }).then(next => {
+            setSaveError(""); e.node?.setData(next);
+          }).catch((error: Error) => { setSaveError(error.message); e.node?.setData(previous); });
+        } } : col)}
         getRowId={(p) => p.data.agent}
         getRowClass={(p) => (p.data?.enabled === false ? "row-paused" : "")}
         sideBar

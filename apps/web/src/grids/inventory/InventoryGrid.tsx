@@ -96,10 +96,11 @@ function InventoryDetail(props: { data: InventoryRow }) {
   );
 }
 
-export function InventoryGrid() {
+export function InventoryGrid({ onGrid }: { onGrid?: (api: import("ag-grid-community").GridApi) => void } = {}) {
   const [rows, setRows] = useState<InventoryRow[]>([]);
+  const [saveError, setSaveError] = useState("");
   const columnDefs: ColDef<InventoryRow>[] = [
-    { field: "sku", width: 100, pinned: "left" },
+    { field: "sku", width: 100, pinned: "left", cellRenderer: "agGroupCellRenderer" },
     { field: "name", flex: 1, minWidth: 160 },
     {
       headerName: "Status",
@@ -148,7 +149,12 @@ export function InventoryGrid() {
       valueFormatter: (p) => Number(p.value ?? 0).toFixed(2),
     },
     { field: "reorderPoint", headerName: "Reorder at", width: 110 },
-    { field: "leadTimeDays", headerName: "Lead days", editable: true, width: 100, onCellValueChanged: (e) => { if (e.data) void api.saveLeadTime(e.data.sku, Number(e.newValue)); } },
+    { field: "leadTimeDays", headerName: "Lead days", editable: true, width: 100, onCellValueChanged: (e) => { if (e.data) {
+      const previous = { ...e.data, leadTimeDays: Number(e.oldValue) };
+      void api.saveLeadTime(e.data.sku, Number(e.newValue)).then(() => setSaveError("")).catch((error: Error) => {
+        setSaveError(error.message); e.node?.setData(previous);
+      });
+    } } },
     { field: "price", valueFormatter: (p) => `$${Number(p.value).toFixed(2)}`, width: 90 },
     { field: "competitorMin", headerName: "Competitor", valueFormatter: (p) => (p.value == null ? "—" : `$${Number(p.value).toFixed(2)}`), width: 110 },
     {
@@ -175,8 +181,10 @@ export function InventoryGrid() {
 
   return (
     <div className="grid-wrap">
-      <AgGridReact
+      {saveError && <div className="error" role="alert">{saveError}</div>}
+      <AgGridReact defaultColDef={{ filter: true, sortable: true, resizable: true }}
         theme={gridTheme}
+        onGridReady={(e) => onGrid?.(e.api)}
         rowData={rows}
         columnDefs={columnDefs}
         getRowId={(p) => p.data.id}

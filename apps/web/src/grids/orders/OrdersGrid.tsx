@@ -31,7 +31,7 @@ export function OrdersGrid({ onGrid, focusId }: { onGrid?: (api: GridApi) => voi
   const gridState = useGridState("orders");
 
   const columnDefs: ColDef<OrderRow>[] = [
-    { field: "simDay", headerName: "Day", sort: "desc", width: 90, chartDataType: "category", enableRowGroup: true },
+    { field: "simDay", filter: "agNumberColumnFilter", headerName: "Day", sort: "desc", width: 90, chartDataType: "category", enableRowGroup: true },
     {
       headerName: "Time",
       colId: "timeOfDay",
@@ -55,14 +55,14 @@ export function OrdersGrid({ onGrid, focusId }: { onGrid?: (api: GridApi) => voi
       enableRowGroup: true,
     },
     {
-      field: "total",
+      field: "total", filter: "agNumberColumnFilter",
       valueFormatter: (p) => formatMoney(Number(p.value ?? 0)),
       chartDataType: "series",
       enableValue: true,
       aggFunc: "sum",
     },
     {
-      field: "refundedTotal",
+      field: "refundedTotal", filter: "agNumberColumnFilter",
       headerName: "Refunded",
       valueFormatter: (p) => formatMoney(Number(p.value ?? 0)),
       chartDataType: "series",
@@ -162,7 +162,7 @@ export function OrdersGrid({ onGrid, focusId }: { onGrid?: (api: GridApi) => voi
         <p className="note">Showing orders up to {pad(Math.floor(msOfDay / 3_600_000))}:{pad(Math.floor((msOfDay % 3_600_000) / 60_000))} on day {simDay}.</p>
       )}
       <div className="grid-wrap">
-        <AgGridReact
+        <AgGridReact defaultColDef={{ filter: true, sortable: true, resizable: true }}
           theme={gridTheme}
           rowData={visibleRows}
           columnDefs={columnDefs}

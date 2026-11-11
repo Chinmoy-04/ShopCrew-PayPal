@@ -6,7 +6,7 @@ import { db } from "../db/client.js";
 import { actions, orders, payouts, priceHistory, products, proposals, purchaseOrders, refunds, simState } from "../db/schema.js";
 import { proposalView } from "../db/views.js";
 import { autoRegisterLiveCapture, isCaptureExhausted, markPoolRefund } from "../paypal/capturePool.js";
-import { PayPalError, paypal } from "../paypal/rest.js";
+import { PayPalError, paypal, paypalErrorDetails } from "../paypal/rest.js";
 import { callToolkit } from "../paypal/toolkit.js";
 import { applyPayPalEvent } from "../paypal/events.js";
 
@@ -58,12 +58,14 @@ export async function executeProposal(id: string, decidedBy: string): Promise<vo
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Execution failed";
+    const providerError = paypalErrorDetails(error);
     await database.update(proposals).set({ status: "failed" }).where(eq(proposals.id, id));
-    await database.update(actions).set({ status: "failed", error: message, finishedAt: nowIso() }).where(eq(actions.idempotencyKey, idempotencyKey));
+    await database.update(actions).set({ status: "failed", error: message, responseJson: providerError, finishedAt: nowIso() }).where(eq(actions.idempotencyKey, idempotencyKey));
     await writeAudit({
       actor: "system",
       agent: row.agent,
       event: "proposal.failed",
+      after: providerError,
       proposalId: id,
       correlationId: row.correlationId,
       message,

@@ -13,6 +13,11 @@ export function onLive(handler: Handler) {
 export function useLiveEvents() {
   useEffect(() => {
     const source = new EventSource("/api/events");
+    let connected = false;
+    source.onopen = () => {
+      if (connected) for (const type of ["sim.reset", "sim.updated"]) handlers.forEach(handler => handler({ type }));
+      connected = true;
+    };
     source.onmessage = (message) => {
       try {
         const event = JSON.parse(message.data);

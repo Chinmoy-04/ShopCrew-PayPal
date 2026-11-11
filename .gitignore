@@ -11,3 +11,6 @@ shopcrew-capture-pool*.json
 apps/server/.data
 apps/web/dist
 apps/server/dist
+
+playwright-report
+test-results

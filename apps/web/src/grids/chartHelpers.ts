@@ -2,8 +2,8 @@ import type { ChartType, CreateRangeChartParams, GridApi } from "ag-grid-communi
 
 /**
  * Integrated Charts need leaf rows. With collapsed groupRows, createRangeChart
- * often opens an empty "No data to display" pie/column. Expand, ungroup briefly,
- * chart all rows, then restore grouping.
+ * often opens an empty "No data to display" pie/column. Ungroup briefly,
+ * chart the filtered leaf rows, then restore the layout and expansion state.
  */
 export function openIntegratedChart(
   api: GridApi,
@@ -15,8 +15,14 @@ export function openIntegratedChart(
   },
 ) {
   const { chartType, columns, title, aggFunc = "sum" } = options;
-  api.expandAll();
-
+  const columnState = api.getColumnState();
+  const expanded = new Map<string, boolean>();
+  api.forEachNode(node => { if (node.id) expanded.set(node.id, Boolean(node.expanded)); });
+  const restore = () => {
+    if (api.isDestroyed()) return;
+    api.applyColumnState({ state: columnState, applyOrder: true });
+    api.forEachNode(node => { if (node.id && (node.group || node.master)) node.setExpanded(expanded.get(node.id) ?? false); });
+  };
   const groupIds = api.getRowGroupColumns().map((col) => col.getColId());
   if (groupIds.length) api.setRowGroupColumns([]);
 
@@ -27,7 +33,7 @@ export function openIntegratedChart(
 
   const rowCount = api.getDisplayedRowCount();
   if (rowCount <= 0) {
-    if (groupIds.length) api.setRowGroupColumns(groupIds);
+    restore();
     return;
   }
 
@@ -46,8 +52,6 @@ export function openIntegratedChart(
     },
   });
 
-  // Restore grouping after the chart has snapped its data
-  if (groupIds.length) {
-    requestAnimationFrame(() => api.setRowGroupColumns(groupIds));
-  }
+  // The unlinked chart keeps its snapshot; viewing it must not change grid layout.
+  requestAnimationFrame(restore);
 }

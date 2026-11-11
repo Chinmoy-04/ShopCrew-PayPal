@@ -40,6 +40,8 @@ export function DecisionCard({ row }: { row: Proposal }) {
         )}
       </div>
 
+      {row.type === "refund" && <p className="refund-detail-warning">Refunds cannot be reversed.</p>}
+
       <div className="proposal-detail-block">
         <div className="note">Agent reasoning</div>
         <p><strong>{row.summary}</strong></p>

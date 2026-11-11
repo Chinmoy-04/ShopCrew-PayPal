@@ -40,6 +40,7 @@ export function ViewMenu({
           key={view.id}
           type="button"
           className={`preset-chip${active === view.id ? " active" : ""}`}
+          disabled={!api}
           aria-pressed={active === view.id}
           onClick={() => select(view.id)}
         >

@@ -5,7 +5,7 @@ import { api, type AuditRow } from "../../api/client";
 import { onLive } from "../../hooks/useLiveEvents";
 import { gridTheme } from "../theme";
 
-export function AuditGrid() {
+export function AuditGrid({ onGrid }: { onGrid?: (api: import("ag-grid-community").GridApi) => void } = {}) {
   const [rows, setRows] = useState<AuditRow[]>([]);
   const apiRef = useRef<GridApi | null>(null);
   const columnDefs: ColDef<AuditRow>[] = [
@@ -34,7 +34,7 @@ export function AuditGrid() {
         <button className="btn" onClick={() => apiRef.current?.exportDataAsExcel()}>Export Excel</button>
       </div>
       <div className="grid-wrap">
-        <AgGridReact theme={gridTheme} rowData={rows} columnDefs={columnDefs} getRowId={(p) => p.data.id} groupDisplayType="groupRows" onGridReady={(e) => { apiRef.current = e.api; }} />
+        <AgGridReact defaultColDef={{ filter: true, sortable: true, resizable: true }} theme={gridTheme} rowData={rows} columnDefs={columnDefs} getRowId={(p) => p.data.id} groupDisplayType="groupRows" onGridReady={(e) => { apiRef.current = e.api; onGrid?.(e.api); }} />
       </div>
     </>
   );

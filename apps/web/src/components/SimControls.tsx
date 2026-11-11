@@ -62,14 +62,9 @@ export function SimControls({ demoPublicReset }: { demoPublicReset?: boolean }) 
                 void run(() => api.reset());
                 return;
               }
-              void run(() =>
-                api.reset(
-                  window.prompt(
-                    "Admin token (ADMIN_TOKEN from .env; default shopcrew-demo locally, random on Render)",
-                    "shopcrew-demo",
-                  ) || "",
-                ),
-              );
+              const token = window.prompt("Admin token (ADMIN_TOKEN from .env)", "shopcrew-demo");
+              if (token === null) return;
+              void run(() => api.reset(token));
             }}
           >
             Reset

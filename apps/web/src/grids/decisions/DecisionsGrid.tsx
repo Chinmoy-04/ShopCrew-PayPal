@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ColDef, GridApi, GridReadyEvent, IStatusPanelParams, IRowNode } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import { api, type Proposal } from "../../api/client";
@@ -58,15 +58,16 @@ function Actions(props: { data: Proposal; node: IRowNode<Proposal> }) {
   const rb = rollbackDisabled(row);
   const amountLabel = row.amount != null ? ` $${Number(row.amount).toFixed(2)}` : "";
   return (
-    <div className="actions">
+    <div className={`actions${row.type === "refund" && pending ? " actions-refund" : ""}`}>
       <button type="button" aria-label={`Toggle details: ${row.summary}`} onClick={() => props.node.setExpanded(!props.node.expanded)}>
         Details
       </button>
-      <button disabled={!pending} title={pending ? `Approve final amount${amountLabel}` : ""} onClick={() => api.approve(row.id)}>
+      <button className={row.type === "refund" && pending ? "refund-approve" : undefined} aria-describedby={row.type === "refund" && pending ? `refund-warning-${row.id}` : undefined} disabled={!pending} title={pending ? `Approve final amount${amountLabel}` : ""} onClick={() => api.approve(row.id)}>
         Approve{pending && amountLabel ? amountLabel : ""}
       </button>
       <button disabled={!pending} onClick={() => api.reject(row.id)}>Reject</button>
       <button disabled={rb.disabled} title={rb.title} onClick={() => void api.rollback(row.id)}>Rollback</button>
+      {row.type === "refund" && pending && <span className="refund-warning" id={`refund-warning-${row.id}`}>Refunds cannot be reversed.</span>}
     </div>
   );
 }
@@ -113,17 +114,28 @@ export function DecisionsGrid({ onGrid, focusId }: { onGrid: (api: GridApi) => v
   const [apiRef, setApiRef] = useState<GridApi | null>(null);
   const [view, setView] = useState<NamedView>("needs");
   const [editError, setEditError] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [loadVersion, setLoadVersion] = useState(0);
+  const loadActive = useRef(true);
   const gridState = useGridState("decisions");
 
   async function load() {
-    const next = await api.proposals();
-    setRows(next);
-    apiRef?.setGridOption("rowData", next);
-  }
-
+      try {
+        const next = await api.proposals();
+        if (!loadActive.current) return;
+        setRows(next);
+        apiRef?.setGridOption("rowData", next);
+        setLoadError("");
+      } catch (error) {
+        if (loadActive.current) setLoadError(error instanceof Error ? error.message : "Could not load decisions");
+      }
+    }
   useEffect(() => {
+    loadActive.current = true;
+    const onPageHide = () => { loadActive.current = false; };
+    window.addEventListener("pagehide", onPageHide);
     void load();
-    return onLive((event) => {
+    const stopLive = onLive((event) => {
       if (event.type === "proposal.upserted" && apiRef) {
         const proposal = event.proposal as Proposal;
         const exists = apiRef.getRowNode(proposal.id);
@@ -131,12 +143,17 @@ export function DecisionsGrid({ onGrid, focusId }: { onGrid: (api: GridApi) => v
       }
       if (event.type === "sim.reset") void load();
     });
-  }, [apiRef]);
+    return () => { loadActive.current = false; stopLive(); window.removeEventListener("pagehide", onPageHide); };
+  }, [apiRef, loadVersion]);
 
   useEffect(() => {
     if (!focusId || !apiRef) return;
     const node = apiRef.getRowNode(focusId);
     if (!node) return;
+    apiRef.setFilterModel(null);
+    for (let parent = node.parent; parent; parent = parent.parent) {
+      if (parent.group) parent.setExpanded(true);
+    }
     node.setExpanded(true);
     apiRef.ensureNodeVisible(node, "middle");
     node.setSelected(true);
@@ -195,7 +212,7 @@ export function DecisionsGrid({ onGrid, focusId }: { onGrid: (api: GridApi) => v
       ) },
     },
     {
-      field: "amount",
+      field: "amount", filter: "agNumberColumnFilter",
       headerName: "Amount",
       editable: (p) => p.data?.status === "pending_approval",
       valueFormatter: (p) => (p.value == null || p.data?.type === "reply" ? "—" : formatMoney(Number(p.value))),
@@ -208,7 +225,7 @@ export function DecisionsGrid({ onGrid, focusId }: { onGrid: (api: GridApi) => v
           node.setData(updated);
         }).catch((err: Error) => {
           setEditError(err.message);
-          node.setDataValue("amount", previous);
+          node.setData({ ...e.data, amount: previous });
         });
       },
       chartDataType: "series",
@@ -220,7 +237,7 @@ export function DecisionsGrid({ onGrid, focusId }: { onGrid: (api: GridApi) => v
     { field: "riskScore", headerName: "Risk", cellRenderer: RiskBar, minWidth: 90 },
     { field: "paypalRef", headerName: "PayPal", cellRenderer: PayPalRef, minWidth: 140 },
     { field: "createdAt", headerName: "Time", width: 90, valueFormatter: (p) => (p.value ? new Date(p.value).toLocaleTimeString() : "") },
-    { field: "agent", rowGroup: true, hide: true, enableRowGroup: true, chartDataType: "category" },
+    { field: "agent", rowGroup: gridState.initialState ? gridState.initialState.rowGroup.groupColIds.includes("agent") : true, hide: true, enableRowGroup: true, chartDataType: "category" },
     {
       colId: "editedByOwner",
       headerName: "Edited",
@@ -244,9 +261,11 @@ export function DecisionsGrid({ onGrid, focusId }: { onGrid: (api: GridApi) => v
         <button type="button" className="btn" onClick={chartStatusBreakdown}>Chart status</button>
         <span className="note">Open Details for reasoning and PayPal IDs. Double-click a pending Amount to edit; press Enter to save.</span>
       </div>
-      {editError && <div className="error">{editError}</div>}
+      {editError && <div className="error" role="alert">{editError}</div>}
+      {loadError && <div className="error" role="alert">{loadError} <button type="button" className="btn" onClick={() => setLoadVersion((version) => version + 1)}>Retry decisions</button></div>}
       <div className="grid-wrap">
-        <AgGridReact
+        <AgGridReact defaultColDef={{ filter: true, sortable: true, resizable: true }}
+          getRowHeight={(params) => params.node.detail ? 480 : params.data?.type === "refund" && params.data.status === "pending_approval" ? 72 : undefined}
           theme={gridTheme}
           rowData={rows}
           columnDefs={columnDefs}
@@ -257,7 +276,7 @@ export function DecisionsGrid({ onGrid, focusId }: { onGrid: (api: GridApi) => v
           detailRowHeight={480}
           isRowMaster={(row: Proposal) => Boolean(row?.id && row.id !== "pending-total")}
           groupDisplayType="groupRows"
-          groupDefaultExpanded={1}
+          isGroupOpenByDefault={(p) => Boolean(p.rowNode.group)}
           enableCharts
           cellSelection
           initialState={gridState.initialState}

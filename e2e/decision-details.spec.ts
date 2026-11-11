@@ -1,10 +1,10 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { revealGridControl } from "./grid-ui";
 
 // All APIs are mocked: this regression must never execute a payment.
-const baseURL = process.env.PLAYWRIGHT_BASE_URL || "http://localhost:8787";
 for (const width of [1440, 390]) {
   test(`decision details open and close at ${width}px`, async ({ page }) => {
-    await page.setViewportSize({ width, height: 900 });
+    await page.setViewportSize({ width, height: width < 600 ? 844 : 900 });
     const proposal = {
       id: "detail-regression", agent: "cs", type: "refund", status: "pending_approval",
       summary: "Review damaged candle refund", amount: 20, simDay: 1,
@@ -15,23 +15,22 @@ for (const width of [1440, 390]) {
     await page.route("**/api/**", async (route) => {
       if (route.request().method() !== "GET") return route.abort();
       const pathname = new URL(route.request().url()).pathname;
+      if (pathname === "/api/events") return route.fulfill({ contentType: "text/event-stream", body: ": fixture connected\n\n" });
       const bodies: Record<string, unknown> = {
         "/api/config": { dryRun: true }, "/api/proposals": [proposal],
         "/api/sim": { simDay: 1, autorun: false, pausedAll: false },
         "/api/kpis": { autoApproved: 0, paused: false, spendToday: 0, budget: 150, revenueToday: 0, pending: 1, decisions: 1, hoursSaved: 0 },
-        "/api/events": "", "/api/payouts": [],
+        "/api/payouts": [],
       };
       await route.fulfill({ json: bodies[pathname] ?? [] });
     });
-    await page.goto(`${baseURL}/control`, { waitUntil: "domcontentloaded" });
+    await page.goto('/control', { waitUntil: "domcontentloaded" });
     await expect(page.locator('.ag-row[row-id="detail-regression"]').first()).toBeVisible();
+    const details = page.getByRole("button", { name: "Toggle details: Review damaged candle refund", exact: true });
     if (width < 600) {
       // AG Grid unpins action columns on small screens; scroll to the Actions column.
-      await page.locator(".ag-body-horizontal-scroll-viewport").evaluate((element) => {
-        element.scrollLeft = element.scrollWidth;
-      });
+      await revealGridControl(page, details, 'end');
     }
-    const details = page.getByRole("button", { name: "Toggle details: Review damaged candle refund", exact: true });
     await expect(details).toBeVisible({ timeout: 60_000 });
     await details.click();
     const card = page.locator(".decision-card");

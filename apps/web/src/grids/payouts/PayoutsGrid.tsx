@@ -35,7 +35,7 @@ export function PayoutsGrid({ onGrid }: { onGrid?: (api: GridApi) => void } = {}
   const apiRef = useRef<GridApi | null>(null);
   const gridState = useGridState("payouts");
   const columnDefs: ColDef<PayoutRow>[] = [
-    { field: "createdAt", valueFormatter: (p) => (p.value ? new Date(p.value).toLocaleTimeString() : "") },
+    { field: "createdAt", cellRenderer: "agGroupCellRenderer", valueFormatter: (p) => (p.value ? new Date(p.value).toLocaleTimeString() : "") },
     { field: "sku" },
     { field: "receiver", flex: 1 },
     { field: "amount", valueFormatter: (p) => formatMoney(Number(p.value)) },
@@ -58,7 +58,7 @@ export function PayoutsGrid({ onGrid }: { onGrid?: (api: GridApi) => void } = {}
   }, []);
   return (
     <div className="grid-wrap">
-      <AgGridReact
+      <AgGridReact defaultColDef={{ filter: true, sortable: true, resizable: true }}
         theme={gridTheme}
         rowData={rows}
         columnDefs={columnDefs}

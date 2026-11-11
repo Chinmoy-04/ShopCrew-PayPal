@@ -1,9 +1,15 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, type Product } from "../api/client";
+import { ProductImage } from "../components/ProductImage";
+import { Reveal } from "../components/BrowsingMotion";
 
 export function cartItems(): { sku: string; qty: number }[] {
-  try { return JSON.parse(localStorage.getItem("shopcrew-cart") || "[]"); }
+  try {
+    const value = JSON.parse(localStorage.getItem("shopcrew-cart") || "[]");
+    if (!Array.isArray(value)) return [];
+    return value.filter((item) => item && typeof item.sku === "string" && Number.isInteger(item.qty) && item.qty > 0);
+  }
   catch { return []; }
 }
 export function saveCart(items: { sku: string; qty: number }[]) {
@@ -25,29 +31,30 @@ export function ShopPage() {
   const [products, setProducts] = useState<Product[] | null>(null);
   const [error, setError] = useState("");
   useEffect(() => { api.products().then(setProducts).catch((err) => setError(err.message)); }, []);
-  if (error) return <main className="page"><div className="error">{error}. Is the API running?</div></main>;
-  if (!products) return <main className="page"><p className="note">Loading the shop…</p></main>;
-  if (!products.length) return <main className="page"><div className="empty">No products yet. Reset the demo from the control room.</div></main>;
+  if (error) return <main className="page store-page"><div className="error">{error}. Is the API running?</div></main>;
+  if (!products) return <main className="page store-page"><p className="note">Loading the shop…</p></main>;
+  if (!products.length) return <main className="page store-page"><div className="empty">No products yet. Reset the demo from the control room.</div></main>;
   return (
-    <main className="page">
-      <h1>Hearth & Wick</h1>
-      <p className="lede">Maya's candle shop. Prices come from the database, so the pricing agent changes what checkout charges.</p>
+    <main className="page store-page">
+      <header className="store-hero">
+        <div className="store-hero-copy"><h1>Hearth &amp; Wick</h1><p>A little warmth.<br /><em>A place to slow down.</em></p><a className="text-link" href="#candles">Explore the candles</a></div>
+        <img src="/images/hearth-wick/lifestyle.webp" srcSet="/images/hearth-wick/lifestyle-480.webp 480w, /images/hearth-wick/lifestyle.webp 1440w" sizes="(max-width: 800px) 100vw, 720px" width={1440} height={960} alt="A candle glowing beside linen, cedar and fig leaves in afternoon light" fetchPriority="high" />
+      </header>
+      <div className="catalog-heading" id="candles"><h2>Find your everyday ritual.</h2><p>Six scents. A little room for each mood.</p></div>
+      <p className="note store-demo-note">Maya's candle shop. Prices come from the database, so the pricing agent changes what checkout charges.</p>
       <div className="shop-grid">
         {products.map((product) => (
           <Link key={product.sku} to={`/shop/${product.sku}`} className="product-card">
-            <div
-              className="product-card__swatch"
-              style={{
-                background: `linear-gradient(165deg, ${product.hue} 0%, color-mix(in srgb, ${product.hue} 55%, #1c1915) 100%)`,
-              }}
-            />
+            <ProductImage key={product.sku} product={product} />
             <div className="product-card__body">
               <strong>{product.name}</strong>
+              <p className="product-scent">{product.blurb}</p>
               <div className="price">${product.price.toFixed(2)} · {product.stock} in stock</div>
             </div>
           </Link>
         ))}
       </div>
+      <Reveal className="store-closing"><p>From the first light<br /><em>to the last quiet moment.</em></p><span>Hearth &amp; Wick · Maya's candle shop</span></Reveal>
     </main>
   );
 }
@@ -58,17 +65,15 @@ export function ProductPage() {
   const [error, setError] = useState("");
   const [added, setAdded] = useState(false);
   useEffect(() => { api.product(sku).then(setProduct).catch((err) => setError(err.message)); }, [sku]);
-  if (error) return <main className="page"><div className="error">{error}</div></main>;
-  if (!product) return <main className="page"><p className="note">Loading…</p></main>;
+  if (error) return <main className="page store-page"><div className="error">{error}</div></main>;
+  if (!product) return <main className="page store-page"><p className="note">Loading…</p></main>;
   const atZero = product.stock <= 0;
   return (
-    <main className="page">
-      <div
-        className="product-hero-swatch"
-        style={{
-          background: `linear-gradient(165deg, ${product.hue} 0%, color-mix(in srgb, ${product.hue} 50%, #1c1915) 100%)`,
-        }}
-      />
+    <main className="page store-page product-page">
+      <Link className="text-link product-back" to="/shop">Back to all candles</Link>
+      <div className="product-layout">
+      <ProductImage key={product.sku} product={product} hero />
+      <div className="product-information">
       <h1>{product.name}</h1>
       <p>{product.blurb}</p>
       <p className="price">${product.price.toFixed(2)} · {product.stock} in stock</p>
@@ -92,7 +97,9 @@ export function ProductPage() {
       >
         {atZero ? "Out of stock" : added ? "Added" : "Add to cart"}
       </button>
-      <Link className="btn" to="/cart">Cart</Link>
+      <Link className="btn product-cart-link" to="/cart">Cart</Link>
+      </div>
+      </div>
     </main>
   );
 }
@@ -100,12 +107,22 @@ export function ProductPage() {
 export function CartPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [items, setItems] = useState(cartItems());
-  useEffect(() => { void api.products().then(setProducts); }, []);
+  const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({});
+  const [catalogError, setCatalogError] = useState("");
+  useEffect(() => {
+    let mounted = true;
+    void api.products().then(rows => { if (mounted) setProducts(rows); }).catch(error => {
+      if (mounted) setCatalogError(error instanceof Error ? error.message : "Could not load products");
+    });
+    return () => { mounted = false; };
+  }, []);
   const rows = items.map((item) => ({ ...item, product: products.find((product) => product.sku === item.sku) }));
   const total = rows.reduce((sum, row) => sum + (row.product?.price ?? 0) * row.qty, 0);
 
   function updateQty(sku: string, qty: number) {
-    const stock = products.find((p) => p.sku === sku)?.stock ?? 0;
+    const product = products.find((p) => p.sku === sku);
+    if (!product) return;
+    const stock = product.stock;
     const next = items
       .map((item) => (item.sku === sku ? { ...item, qty: Math.max(0, Math.min(stock, Math.floor(qty))) } : item))
       .filter((item) => item.qty > 0);
@@ -120,8 +137,9 @@ export function CartPage() {
   }
 
   return (
-    <main className="page">
+    <main className="page store-page cart-page">
       <h1>Cart</h1>
+      {catalogError && <div className="error" role="alert">{catalogError}</div>}
       {!rows.length && <div className="empty">The cart is empty. <Link to="/shop">Browse the shop.</Link></div>}
       {rows.map((row) => (
         <div key={row.sku} className="feed-row cart-row">
@@ -130,10 +148,20 @@ export function CartPage() {
             Qty
             <input
               type="number"
+              disabled={!row.product}
               min={1}
               max={row.product?.stock ?? 1}
-              value={row.qty}
-              onChange={(e) => updateQty(row.sku, Number(e.target.value))}
+              value={quantityDrafts[row.sku] ?? row.qty}
+              onChange={(e) => {
+                const value = e.target.value;
+                setQuantityDrafts((drafts) => ({ ...drafts, [row.sku]: value }));
+                if (value !== "") updateQty(row.sku, Number(value));
+              }}
+              onBlur={() => setQuantityDrafts((drafts) => {
+                const next = { ...drafts };
+                delete next[row.sku];
+                return next;
+              })}
             />
           </label>
           <span>${((row.product?.price ?? 0) * row.qty).toFixed(2)}</span>
@@ -189,7 +217,7 @@ export function CheckoutPage({
   const demoOnly = Boolean(dryRun);
 
   return (
-    <main className="page">
+    <main className="page store-page checkout-page">
       <h1>Checkout</h1>
       <HowToTest hint={demoBuyerHint} email={demoBuyerEmail} />
       {dryRun && <div className="banner">PayPal sandbox credentials are not set. This checkout is labeled DRY and stays inside the demo database.</div>}
@@ -222,8 +250,13 @@ function PayPalSlot({ clientId, items, onDone, onError }: { clientId: string; it
         const session = sdk.createPayPalOneTimePaymentSession({
           onApprove: async ({ orderId }: { orderId: string }) => {
             setStatus("capturing");
-            const captured = await api.capture(orderId);
-            onDone(captured.id);
+            try {
+              const captured = await api.capture(orderId);
+              onDone(captured.id);
+            } catch (error) {
+              setStatus("ready");
+              onError(error instanceof Error ? error.message : "Capture failed");
+            }
           },
           onCancel: () => setStatus("ready"),
           onError: (error: unknown) => {
@@ -287,7 +320,7 @@ export function SuccessPage() {
   }, [id]);
 
   return (
-    <main className="page">
+    <main className="page store-page order-success-page">
       <h1>Paid</h1>
       {error && <div className="error">{error}</div>}
       {!order && !error && <p className="note">Loading order…</p>}

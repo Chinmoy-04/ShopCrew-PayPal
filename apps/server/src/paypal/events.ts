@@ -102,6 +102,11 @@ export async function applyPayPalEvent(event: {
           : event.event_type.endsWith("FAILED") || event.event_type.endsWith("DENIED") || event.event_type.endsWith("RETURNED")
             ? "FAILED"
             : "SUCCESS";
+      // Late delivery must not resurrect a cancelled payout or regress a settled item.
+      if ((payout.status === "CANCELED" && status !== "CANCELED") || (["SUCCESS", "FAILED"].includes(payout.status) && status === "UNCLAIMED")) {
+        await database.update(webhookEvents).set({ processedAt: nowIso() }).where(eq(webhookEvents.paypalEventId, event.id));
+        return;
+      }
       await database.update(payouts).set({ status, confirmedAt: nowIso() }).where(eq(payouts.id, payout.id));
       const proposalStatus = status === "FAILED" ? "failed" : status === "CANCELED" ? "rolled_back" : "confirmed";
       await database.update(proposals).set({ status: proposalStatus }).where(eq(proposals.id, payout.proposalId));

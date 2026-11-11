@@ -18,16 +18,17 @@ Target **Devpost submit: Tue 10 Nov 2026** (deadline Thu 12 Nov 2026, 12:00 PST)
 - [ ] One sandbox checkout → order **confirmed** via webhook (label cut in video if slow)
 - [ ] Seventh **Advance** within one minute → 429 with readable message
 
-## Browser smoke (optional)
-
-If Playwright is installed:
+## Automated functional baseline
 
 ```bash
-npx playwright install chromium
-PLAYWRIGHT_BASE_URL=https://YOUR_SERVICE.onrender.com npm run test:e2e
+npx playwright install --with-deps chromium firefox webkit
+npm run build
+npm run test:e2e
 ```
 
-Without Playwright, walk the four routes manually at 1440×900 and save screenshots for Devpost.
+The suite launches its own isolated DRY server and runs Chromium, Firefox and WebKit at desktop and phone widths. Do not configure a hosted target for destructive tests. Reports are written to `playwright-report/` and failure traces/screenshots to `test-results/`.
+
+See [functional verification](functional-verification.md) for covered cases, defects, current results and outstanding acceptance work. This suite does not yet certify every control or real PayPal/AI integrations.
 
 ## Video & Devpost
 

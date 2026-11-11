@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./styles/app.css";
+import "./styles/paper-ledger.css";
 
 async function loadConfig(attempts = 8) {
   for (let i = 0; i < attempts; i++) {

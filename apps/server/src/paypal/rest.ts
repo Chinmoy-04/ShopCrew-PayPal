@@ -9,6 +9,24 @@ export class PayPalError extends Error {
   }
 }
 
+/** Retain support diagnostics without copying headers, credentials or request bodies. */
+export function paypalErrorDetails(error: unknown) {
+  if (!(error instanceof PayPalError)) return null;
+  const body = error.body && typeof error.body === "object"
+    ? error.body as Record<string, unknown> : {};
+  const text = (value: unknown) => typeof value === "string" ? value.slice(0, 1000) : undefined;
+  return {
+    provider: "paypal",
+    status: error.status,
+    name: text(body.name),
+    debugId: text(body.debug_id),
+    details: Array.isArray(body.details) ? body.details.slice(0, 20).map((detail) => {
+      const item = detail && typeof detail === "object" ? detail as Record<string, unknown> : {};
+      return { issue: text(item.issue), field: text(item.field), location: text(item.location) };
+    }) : [],
+  };
+}
+
 export function formatPayPalError(body: unknown, status = 0): string {
   if (body && typeof body === "object") {
     const record = body as { message?: string; details?: { description?: string; issue?: string }[] };

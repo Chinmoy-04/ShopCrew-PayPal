@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ensureAgGrid } from "../grids/ensureAgGrid";
 import type { GridApi } from "ag-grid-community";
 import { useSearchParams } from "react-router-dom";
@@ -46,17 +46,32 @@ export function ControlRoomPage({
   const [params, setParams] = useSearchParams();
   const initialTab = isTab(params.get("tab")) ? params.get("tab")! : "decisions";
   const [tab, setTab] = useState<Tab>(initialTab as Tab);
-  const [gridApi, setGridApi] = useState<GridApi | null>(null);
+  const gridApi = useRef<GridApi | null>(null);
+  const gridWaiter = useRef<((api: GridApi) => void) | null>(null);
+  function setGridApi(api: GridApi) { gridApi.current = api; gridWaiter.current?.(api); gridWaiter.current = null; }
+  async function commandGrid(name: string): Promise<GridApi | null> {
+    if (!isTab(name)) throw new Error("Unknown grid");
+    if (name === tab) return gridApi.current;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { gridWaiter.current = null; reject(new Error("Grid did not become ready")); }, 10000);
+      gridWaiter.current = (api) => { clearTimeout(timer); resolve(api); };
+      selectTab(name);
+    });
+  }
   const [pendingCount, setPendingCount] = useState(0);
   const [pendingDollars, setPendingDollars] = useState(0);
   const [autoToday, setAutoToday] = useState(0);
   const [budgetBurn, setBudgetBurn] = useState("");
   const [paused, setPaused] = useState(false);
   const [payoutPending, setPayoutPending] = useState(0);
+  const [stripError, setStripError] = useState("");
+  const [stripVersion, setStripVersion] = useState(0);
+  const stripAlive = useRef(true);
   const focusId = params.get("focus");
 
   async function refreshStrip() {
     const [kpis, proposals, payouts] = await Promise.all([api.kpis(), api.proposals(), api.payouts()]);
+    if (!stripAlive.current) return;
     const pending = proposals.filter((row) => row.status === "pending_approval");
     setPendingCount(pending.length);
     setPendingDollars(pending.reduce((sum, row) => sum + (row.amount ?? 0), 0));
@@ -68,8 +83,16 @@ export function ControlRoomPage({
   }
 
   useEffect(() => {
-    void refreshStrip();
-    return onLive((event) => {
+    stripAlive.current = true;
+    const onPageHide = () => { stripAlive.current = false; };
+    window.addEventListener("pagehide", onPageHide);
+    const refresh = () => {
+      void refreshStrip().then(() => { if (stripAlive.current) setStripError(""); }).catch((error) => {
+        if (stripAlive.current) setStripError(error instanceof Error ? error.message : "Could not load supervision summary");
+      });
+    };
+    refresh();
+    const stopLive = onLive((event) => {
       if (
         event.type === "proposal.upserted"
         || event.type === "payout.upserted"
@@ -77,10 +100,11 @@ export function ControlRoomPage({
         || event.type === "sim.advanced"
         || event.type === "policy.updated"
       ) {
-        void refreshStrip();
+        refresh();
       }
     });
-  }, []);
+    return () => { stripAlive.current = false; stopLive(); window.removeEventListener("pagehide", onPageHide); };
+  }, [stripVersion]);
 
   useEffect(() => {
     const next = isTab(params.get("tab")) ? (params.get("tab") as Tab) : tab;
@@ -95,18 +119,14 @@ export function ControlRoomPage({
   }
 
   function reviewNextPending() {
-    selectTab("decisions");
     void api.proposals().then((rows) => {
-      const pending = rows
-        .filter((row) => row.status === "pending_approval")
-        .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
-      const target = pending[0];
-      if (!target || !gridApi) return;
-      const node = gridApi.getRowNode(target.id);
-      if (!node) return;
-      node.setExpanded(true);
-      gridApi.ensureNodeVisible(node, "middle");
-      node.setSelected(true);
+      const target = rows.filter((row) => row.status === "pending_approval")
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+      const next = new URLSearchParams();
+      next.set("tab", "decisions");
+      if (target) next.set("focus", target.id);
+      setParams(next, { replace: true });
+      setTab("decisions");
     });
   }
 
@@ -118,13 +138,15 @@ export function ControlRoomPage({
   return (
     <SimTimeProvider>
       <main className="page control-room">
+        <header className="operations-heading"><h1>Control room</h1><p>Agent proposals. Your rules. Every action recorded.</p></header>
         {demoPublicReset && (
           <div className="banner banner-demo">Shared demo — data resets on cold start and after Reset (60s cooldown).</div>
         )}
         {dryRun && <div className="banner">Sandbox credentials are empty, so refunds and payouts are dry-run and labeled DRY. Add keys in .env to hit PayPal.</div>}
         <SimControls demoPublicReset={demoPublicReset} />
+        {stripError && <div className="error" role="alert">{stripError} <button type="button" className="btn" onClick={() => setStripVersion((version) => version + 1)}>Retry summary</button></div>}
         <div className="supervision-strip">
-          <div><strong>{pendingCount}</strong> pending · ${pendingDollars.toFixed(2)}</div>
+          <div className="supervision-pending"><strong>{pendingCount}</strong> pending · ${pendingDollars.toFixed(2)}</div>
           <div>Auto-approved today: <strong>{autoToday}</strong></div>
           <div>Budget burn: <strong>{budgetBurn}</strong></div>
           <div>{paused ? <span className="badge blocked">paused</span> : <span className="badge confirmed">agents live</span>}</div>
@@ -141,7 +163,7 @@ export function ControlRoomPage({
               </button>
             ))}
           </div>
-          <CommandBar grid={tab} getApi={() => gridApi} onGrid={(name) => selectTab(name as Tab)} />
+          <CommandBar grid={tab} getApi={() => gridApi.current} onGrid={commandGrid} />
         </div>
         <p className="control-tab-hint note">{TAB_HINT[tab]}</p>
         <div className="control-grid-area">
@@ -149,10 +171,10 @@ export function ControlRoomPage({
             {tab === "inbox" && <InboxGrid onGrid={setGridApi} />}
             {tab === "decisions" && <DecisionsGrid onGrid={setGridApi} focusId={focusId} />}
             {tab === "orders" && <OrdersGrid onGrid={setGridApi} focusId={focusId} />}
-            {tab === "inventory" && <InventoryGrid />}
+            {tab === "inventory" && <InventoryGrid onGrid={setGridApi} />}
             {tab === "payouts" && <PayoutsGrid onGrid={setGridApi} />}
-            {tab === "audit" && <AuditGrid />}
-            {tab === "policies" && <PoliciesGrid />}
+            {tab === "audit" && <AuditGrid onGrid={setGridApi} />}
+            {tab === "policies" && <PoliciesGrid onGrid={setGridApi} />}
 
           </div>
         </div>

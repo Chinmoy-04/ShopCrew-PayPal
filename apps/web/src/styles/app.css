@@ -498,7 +498,9 @@ h1, h2, .brand { font-family: Fraunces, serif; font-weight: 520; letter-spacing:
   gap: 8px;
   font-size: 13px;
 }
-.sim-clock-compact .sim-clock-hms { font-family: Fraunces, serif; font-size: 18px; }
+.sim-clock-compact .sim-clock-hms { font-family: Fraunces, serif; font-size: 18px; width: 3em; flex: none; }
+/* Keep adjacent controls still while proportional clock digits and phases change. */
+.sim-clock-compact .sim-clock-phase { width: 7em; flex: none; }
 .sim-clock-compact .sim-clock-track.compact {
   width: 72px;
   height: 6px;
@@ -801,4 +803,11 @@ h1, h2, .brand { font-family: Fraunces, serif; font-weight: 520; letter-spacing:
   .hero { min-height: auto; padding-top: 12px; }
   .shop-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
   .feed-row { grid-template-columns: 72px 1fr auto; font-size: 13px; }
+}
+
+/* Keep informational filter chips from covering command actions on narrow screens. */
+@media (max-width: 600px) {
+  .command-bar-form { flex: 1 0 100%; min-width: 0; }
+  .command-bar-form input { min-width: 0; }
+  .command-bar .applied-chips { flex-basis: 100%; }
 }

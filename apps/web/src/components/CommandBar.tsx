@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import type { GridApi } from "ag-grid-community";
 import { api } from "../api/client";
 
@@ -10,7 +10,7 @@ const PRESETS = [
   { label: "Approved by me", query: "approved by me" },
 ];
 
-export function CommandBar({ grid, getApi, onGrid }: { grid: string; getApi: () => GridApi | null; onGrid: (name: string) => void }) {
+export function CommandBar({ grid, getApi, onGrid }: { grid: string; getApi: () => GridApi | null; onGrid: (name: string) => Promise<GridApi | null> }) {
   const [query, setQuery] = useState("show refunds over $20");
   const [explanation, setExplanation] = useState("");
   const [error, setError] = useState("");
@@ -18,7 +18,9 @@ export function CommandBar({ grid, getApi, onGrid }: { grid: string; getApi: () 
   const [chips, setChips] = useState<string[]>([]);
   const [undoState, setUndoState] = useState<{ filterModel: unknown; rowGroupCols: string[] } | null>(null);
 
+  useEffect(() => { setUndoState(null); setChips([]); setExplanation(""); }, [grid]);
   async function run(nextQuery: string) {
+    if (busy || !nextQuery.trim()) return;
     setError("");
     setBusy(true);
     setQuery(nextQuery);
@@ -34,16 +36,19 @@ export function CommandBar({ grid, getApi, onGrid }: { grid: string; getApi: () 
       schema = null;
     }
     try {
-      const previous = {
+      let previous = {
         filterModel: gridApi?.getFilterModel() ?? null,
         rowGroupCols: gridApi?.getRowGroupColumns().map((col) => col.getColId()) ?? [],
       };
       const result = await api.nl(nextQuery, grid, state, schema);
-      if (result.grid && result.grid !== grid) onGrid(result.grid);
+      const target = result.grid && result.grid !== grid ? await onGrid(result.grid) : getApi();
+      if (!target || target.isDestroyed()) throw new Error("Grid is not ready");
+      if (result.grid && result.grid !== grid) previous = {
+        filterModel: target.getFilterModel(), rowGroupCols: target.getRowGroupColumns().map(col => col.getColId()),
+      };
       setExplanation(result.explanation);
       setUndoState(previous);
-      await Promise.resolve();
-      const target = getApi();
+
       if (result.gridState && target) {
         const known = new Set(target.getColumns()?.map((col) => col.getColId()) ?? []);
         // Drop unknown columns before setState when possible.
@@ -51,7 +56,7 @@ export function CommandBar({ grid, getApi, onGrid }: { grid: string; getApi: () 
         target.setState(result.gridState as never, result.propertiesToIgnore as never);
       } else if (result.simple && target) {
         target.setFilterModel(result.simple.filterModel);
-        if (result.simple.rowGroupCols.length) target.setRowGroupColumns(result.simple.rowGroupCols);
+        target.setRowGroupColumns(result.simple.rowGroupCols);
       }
       const applied: string[] = [];
       const fm = result.simple?.filterModel ?? {};

@@ -10,7 +10,22 @@ export function useGridState(gridId: string) {
   const initialState = useMemo(() => {
     try {
       const raw = localStorage.getItem(storageKey);
-      return raw ? JSON.parse(raw) : undefined;
+      if (!raw) return undefined;
+      const saved = JSON.parse(raw);
+      if (!saved || typeof saved !== "object" || Array.isArray(saved)) return undefined;
+      if (typeof saved.version !== "string") return undefined;
+      for (const [section, field] of [
+        ["rowGroup", "groupColIds"], ["sort", "sortModel"],
+        ["columnVisibility", "hiddenColIds"], ["columnOrder", "orderedColIds"],
+        ["columnPinning", "leftColIds"], ["columnPinning", "rightColIds"],
+        ["columnSizing", "columnSizingModel"], ["aggregation", "aggregationModel"],
+      ]) {
+        if (saved[section] !== undefined && (!saved[section] || typeof saved[section] !== "object"
+          || (saved[section][field] !== undefined && !Array.isArray(saved[section][field])))) return undefined;
+      }
+      // AG Grid omits empty grouping from getState(). Explicitly restore that
+      // choice rather than reapplying rowGroup defaults from column definitions.
+      return { ...saved, rowGroup: saved.rowGroup ?? { groupColIds: [] } };
     } catch {
       return undefined;
     }
@@ -18,7 +33,8 @@ export function useGridState(gridId: string) {
 
   const onGridReady = useCallback((event: GridReadyEvent) => {
     apiRef.current = event.api;
-  }, []);
+    if (initialState) event.api.setRowGroupColumns(initialState.rowGroup.groupColIds);
+  }, [initialState]);
 
   const onStateUpdated = useCallback((event: StateUpdatedEvent) => {
     try {

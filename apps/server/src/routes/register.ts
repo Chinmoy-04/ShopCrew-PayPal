@@ -100,6 +100,9 @@ export async function registerRoutes(app: FastifyInstance) {
   app.patch("/api/products/:sku", async (req) => {
     const sku = (req.params as { sku: string }).sku;
     const body = req.body as { leadTimeDays?: number };
+    if (!Number.isInteger(body.leadTimeDays) || Number(body.leadTimeDays) < 1) {
+      throw Object.assign(new Error("Lead time must be a positive integer"), { statusCode: 422 });
+    }
     if (body.leadTimeDays) await db().update(products).set({ leadTimeDays: body.leadTimeDays }).where(eq(products.sku, sku));
     const [product] = await db().select().from(products).where(eq(products.sku, sku));
     bus.emit({ type: "inventory.changed", sku });
@@ -217,6 +220,9 @@ export async function registerRoutes(app: FastifyInstance) {
     const body = req.body as { amount?: number };
     const [row] = await db().select().from(proposals).where(eq(proposals.id, id));
     if (!row || row.status !== "pending_approval") throw Object.assign(new Error("Only a pending proposal can be edited"), { statusCode: 409 });
+    if (!Number.isFinite(body.amount) || Number(body.amount) <= 0) {
+      throw Object.assign(new Error("Amount must be a positive finite number"), { statusCode: 422 });
+    }
     const amount = money(Number(body.amount));
     const [sim] = await db().select().from(simState);
     const [policy] = await db().select().from(policies).where(eq(policies.agent, row.agent));
@@ -263,12 +269,13 @@ export async function registerRoutes(app: FastifyInstance) {
     if (row.type === "refund") args.amount = { currency_code: "USD", value: amount.toFixed(2) };
     if (row.type === "price_change") args.new_price = amount;
     if (row.type === "payout") args.amount = amount.toFixed(2);
-    await db().update(proposals).set({
+    const [edited] = await db().update(proposals).set({
       amount,
       editedArgsJson: args,
       policyResultJson: { ...policyResult, ...(orderTotal != null ? { orderTotal, refundedAlready } : {}), editedByOwner: true },
       inputsJson: { ...priorInputs, editedByOwner: true },
-    }).where(eq(proposals.id, id));
+    }).where(and(eq(proposals.id, id), eq(proposals.status, "pending_approval"))).returning();
+    if (!edited) throw Object.assign(new Error("Only a pending proposal can be edited"), { statusCode: 409 });
     await writeAudit({ actor: "owner", agent: row.agent, event: "proposal.edited", proposalId: id, correlationId: row.correlationId, message: `Owner edited the amount to $${amount.toFixed(2)}.` });
     const view = await proposalView(id);
     bus.emit({ type: "proposal.upserted", proposal: view });
@@ -279,7 +286,10 @@ export async function registerRoutes(app: FastifyInstance) {
     const id = (req.params as { id: string }).id;
     const [row] = await db().select().from(proposals).where(and(eq(proposals.id, id), eq(proposals.status, "pending_approval")));
     if (!row) throw Object.assign(new Error("Proposal is not waiting for approval"), { statusCode: 409 });
-    const finalAmount = money(Number(row.amount ?? 0));
+    const [claimed] = await db().update(proposals).set({ status: "approved", decidedBy: "owner", decidedAt: nowIso() })
+      .where(and(eq(proposals.id, id), eq(proposals.status, "pending_approval"))).returning();
+    if (!claimed) throw Object.assign(new Error("Proposal is not waiting for approval"), { statusCode: 409 });
+    const finalAmount = money(Number(claimed.amount ?? 0));
     await writeAudit({
       actor: "owner",
       agent: row.agent,
@@ -288,7 +298,6 @@ export async function registerRoutes(app: FastifyInstance) {
       correlationId: row.correlationId,
       message: `Owner approved final amount $${finalAmount.toFixed(2)}.`,
     });
-    await db().update(proposals).set({ status: "approved", decidedBy: "owner", decidedAt: nowIso() }).where(eq(proposals.id, id));
     await executeProposal(id, "owner");
     return proposalView(id);
   });
@@ -297,7 +306,10 @@ export async function registerRoutes(app: FastifyInstance) {
     const id = (req.params as { id: string }).id;
     const [row] = await db().select().from(proposals).where(eq(proposals.id, id));
     if (!row) throw Object.assign(new Error("Not found"), { statusCode: 404 });
-    await db().update(proposals).set({ status: "rejected", decidedBy: "owner", decidedAt: nowIso() }).where(eq(proposals.id, id));
+    if (row.status !== "pending_approval") throw Object.assign(new Error("Proposal is not waiting for approval"), { statusCode: 409 });
+    const [rejected] = await db().update(proposals).set({ status: "rejected", decidedBy: "owner", decidedAt: nowIso() })
+      .where(and(eq(proposals.id, id), eq(proposals.status, "pending_approval"))).returning();
+    if (!rejected) throw Object.assign(new Error("Proposal is not waiting for approval"), { statusCode: 409 });
     await writeAudit({ actor: "owner", agent: row.agent, event: "proposal.rejected", proposalId: id, correlationId: row.correlationId, message: "Owner rejected the proposal." });
     const view = await proposalView(id);
     bus.emit({ type: "proposal.upserted", proposal: view });
@@ -313,7 +325,9 @@ export async function registerRoutes(app: FastifyInstance) {
       const [row] = await db().select().from(proposals).where(eq(proposals.id, id));
       if (!row || row.status !== "pending_approval") continue;
       if (body.maxAmount !== undefined && (row.amount ?? 0) > body.maxAmount) continue;
-      await db().update(proposals).set({ status: "approved", decidedBy: "owner", decidedAt: nowIso() }).where(eq(proposals.id, id));
+      const [claimed] = await db().update(proposals).set({ status: "approved", decidedBy: "owner", decidedAt: nowIso() })
+        .where(and(eq(proposals.id, id), eq(proposals.status, "pending_approval"))).returning();
+      if (!claimed) continue;
       await executeProposal(id, "owner");
       done.push(id);
     }
@@ -352,6 +366,13 @@ export async function registerRoutes(app: FastifyInstance) {
   app.put("/api/policies/:agent", async (req) => {
     const agent = (req.params as { agent: string }).agent;
     const body = req.body as Record<string, number | boolean>;
+    const ranges: Record<string, number> = { autoApproveMax: 500, dailyBudget: 5000, maxPctOfOrder: 1, maxPriceChangePct: 100, minMarginPct: 100 };
+    for (const [field, max] of Object.entries(ranges)) {
+      if (body[field] !== undefined && (typeof body[field] !== "number" || !Number.isFinite(body[field]) || Number(body[field]) < 0 || Number(body[field]) > max)) {
+        throw Object.assign(new Error(`${field} must be a number between 0 and ${max}`), { statusCode: 422 });
+      }
+    }
+    if (body.enabled !== undefined && typeof body.enabled !== "boolean") throw Object.assign(new Error("enabled must be boolean"), { statusCode: 422 });
     if (body.autoApproveMax !== undefined && Number(body.autoApproveMax) > POLICY_CLAMP.autoApproveMax) {
       throw Object.assign(new Error(`autoApproveMax must be ≤ ${POLICY_CLAMP.autoApproveMax}`), { statusCode: 422 });
     }
@@ -458,7 +479,7 @@ export async function registerRoutes(app: FastifyInstance) {
       verified = false;
     }
     const event = req.body as { id: string; event_type: string; resource?: Record<string, unknown> };
-    await applyPayPalEvent(event, verified);
+    await applyPayPalEvent({ ...event, dryRun: false }, verified);
     return reply.code(200).send({ ok: true });
   });
 

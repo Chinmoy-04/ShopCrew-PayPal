@@ -72,9 +72,10 @@ function Detail(props: { data: MessageRow }) {
       )}
       {row.proposalId && row.proposalStatus === "pending_approval" && (
         <div className="actions" style={{ marginTop: 8 }}>
-          <button className="btn primary" onClick={() => void decide("approve")} disabled={busy}>
+          <button className={row.proposalType === "refund" ? "btn danger" : "btn primary"} aria-describedby={row.proposalType === "refund" ? `inbox-refund-warning-${row.id}` : undefined} onClick={() => void decide("approve")} disabled={busy}>
             ✓ Approve draft reply
           </button>
+          {row.proposalType === "refund" && <span className="refund-warning" id={`inbox-refund-warning-${row.id}`}>Refunds cannot be reversed.</span>}
           <button className="btn danger" onClick={() => void decide("reject")} disabled={busy}>
             ✗ Reject
           </button>
@@ -101,13 +102,13 @@ export function InboxGrid({ onGrid }: { onGrid: (api: GridApi) => void }) {
   useEffect(() => {
     void load();
     return onLive((event) => {
-      if (event.type === "sim.advanced" || event.type === "sim.reset") void load();
+      if (event.type === "proposal.upserted" || event.type === "sim.updated" || event.type === "sim.advanced" || event.type === "sim.reset") void load();
     });
   }, [apiRef]);
 
   const columnDefs: ColDef<MessageRow>[] = [
     { field: "simDay", headerName: "Day", width: 70, filter: "agNumberColumnFilter", sort: "desc" },
-    { field: "customer", headerName: "Customer", minWidth: 130, filter: "agTextColumnFilter" },
+    { field: "customer", headerName: "Customer", minWidth: 130, filter: "agTextColumnFilter", cellRenderer: "agGroupCellRenderer" },
     { field: "channel", headerName: "Channel", width: 100, filter: "agSetColumnFilter" },
     { field: "category", headerName: "Category", cellRenderer: CategoryBadge, minWidth: 140, filter: "agSetColumnFilter" },
     { field: "sentiment", headerName: "Sentiment", cellRenderer: SentimentBadge, width: 130, filter: "agSetColumnFilter" },
@@ -118,12 +119,14 @@ export function InboxGrid({ onGrid }: { onGrid: (api: GridApi) => void }) {
 
   return (
     <div className="grid-wrap">
-      <AgGridReact
+      <AgGridReact defaultColDef={{ filter: true, sortable: true, resizable: true }}
         theme={gridTheme}
         rowData={rows}
         columnDefs={columnDefs}
         getRowId={(p) => p.data.id}
         masterDetail
+        // Keep the expanded message from sticking over its approval controls.
+        suppressGroupRowsSticky
         detailCellRenderer={Detail}
         detailRowHeight={420}
         isRowMaster={() => true}
