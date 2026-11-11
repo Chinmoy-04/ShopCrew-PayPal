@@ -41,7 +41,13 @@ export function InsightsPage({
   const [mode, setMode] = useState<AgStudioMode>("view");
   const [dataEpoch, setDataEpoch] = useState(0);
   const [initialState] = useState<AgReportState<ShopCrewRegistry>>(
-    () => (loadSavedReport() as AgReportState<ShopCrewRegistry> | null) ?? shopCrewReport,
+    () => {
+      const report = (loadSavedReport() as AgReportState<ShopCrewRegistry> | null) ?? shopCrewReport;
+      // Keep the report visible beside the compact navigation rail on phones.
+      return matchMedia("(max-width: 700px)").matches
+        ? { ...report, panels: { ...report.panels, filters: { ...report.panels?.filters, collapsed: true } } }
+        : report;
+    },
   );
   const latestReport = useRef(initialState);
   const [savedNote, setSavedNote] = useState("");
@@ -134,11 +140,11 @@ export function InsightsPage({
         <div>
           <h1>Insights</h1>
           <p className="insights-intro">The day's work, in view.</p>
-          <p className="note">
+          <details className="workspace-report-info"><summary>Report details</summary><p className="note">
             AG Studio report with ShopCrew widgets{studioAiEnabled ? " and custom agents" : ""}.
             {!licenseKey && " Running without a licence key (watermark OK for the hackathon)."}
             {!studioAiEnabled && " Set AG_STUDIO_OPENAI_API_KEY to enable Studio AI."}
-          </p>
+          </p></details>
         </div>
         <div className="insights-actions">
           <button type="button" className="btn" aria-pressed={mode === "view"} onClick={() => setMode("view")}>

@@ -5,6 +5,7 @@ import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { CommandBar } from "../components/CommandBar";
 import { SimControls } from "../components/SimControls";
+import { OperationsPortal, operationsTabs } from "../components/OperationsShell";
 import { SimTimeProvider } from "../hooks/SimTimeContext";
 import { onLive } from "../hooks/useLiveEvents";
 import { AuditGrid } from "../grids/audit/AuditGrid";
@@ -138,12 +139,12 @@ export function ControlRoomPage({
   return (
     <SimTimeProvider>
       <main className="page control-room">
-        <header className="operations-heading"><h1>Control room</h1><p>Agent proposals. Your rules. Every action recorded.</p></header>
+        <header className="operations-heading"><div><h1>{operationsTabs.find(item => item.name === tab)?.label}</h1><p>{TAB_HINT[tab]}</p></div><span className="workspace-context">Control room</span></header>
         {demoPublicReset && (
           <div className="banner banner-demo">Shared demo — data resets on cold start and after Reset (60s cooldown).</div>
         )}
         {dryRun && <div className="banner">Sandbox credentials are empty, so refunds and payouts are dry-run and labeled DRY. Add keys in .env to hit PayPal.</div>}
-        <SimControls demoPublicReset={demoPublicReset} />
+        <OperationsPortal slot="simulation"><SimControls demoPublicReset={demoPublicReset} /></OperationsPortal>
         {stripError && <div className="error" role="alert">{stripError} <button type="button" className="btn" onClick={() => setStripVersion((version) => version + 1)}>Retry summary</button></div>}
         <div className="supervision-strip">
           <div className="supervision-pending"><strong>{pendingCount}</strong> pending · ${pendingDollars.toFixed(2)}</div>
@@ -153,20 +154,24 @@ export function ControlRoomPage({
           <button type="button" className="btn primary" onClick={reviewNextPending}>Review next pending</button>
         </div>
         <div className="control-nav">
-          <div className="tabs">
-            {TABS.map((name) => (
-              <button key={name} className="btn" aria-selected={tab === name} onClick={() => selectTab(name)}>
-                {name}
+          <OperationsPortal slot="navigation"><div className="tabs" role="tablist" aria-label="Control room sections" aria-orientation="vertical">
+            {operationsTabs.map(({ name, label, icon: Icon }) => (
+              <button key={name} id={`operations-tab-${name}`} type="button" role="tab" className="btn" title={label} aria-label={label} aria-controls="operations-panel" aria-selected={tab === name} tabIndex={tab === name ? 0 : -1}
+                onKeyDown={(event) => {
+                  const index = TABS.indexOf(name);
+                  const next = event.key === "ArrowDown" ? (index + 1) % TABS.length : event.key === "ArrowUp" ? (index + TABS.length - 1) % TABS.length : event.key === "Home" ? 0 : event.key === "End" ? TABS.length - 1 : -1;
+                  if (next >= 0) { event.preventDefault(); selectTab(TABS[next]); document.getElementById(`operations-tab-${TABS[next]}`)?.focus(); }
+                }} onClick={() => selectTab(name)}>
+                <Icon aria-hidden="true" /><span className="sidebar-label">{name}</span>
                 {!!badges[name as keyof typeof badges] && (
                   <span className="tab-badge">{badges[name as keyof typeof badges]}</span>
                 )}
               </button>
             ))}
-          </div>
+          </div></OperationsPortal>
           <CommandBar grid={tab} getApi={() => gridApi.current} onGrid={commandGrid} />
         </div>
-        <p className="control-tab-hint note">{TAB_HINT[tab]}</p>
-        <div className="control-grid-area">
+        <div className="control-grid-area" id="operations-panel" role="tabpanel" aria-labelledby={`operations-tab-${tab}`}>
           <div className="grid-panel" key={tab}>
             {tab === "inbox" && <InboxGrid onGrid={setGridApi} />}
             {tab === "decisions" && <DecisionsGrid onGrid={setGridApi} focusId={focusId} />}

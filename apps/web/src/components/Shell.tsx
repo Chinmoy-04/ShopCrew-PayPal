@@ -1,7 +1,10 @@
-import { Link, NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { BrowsingMotion } from "./BrowsingMotion";
+import { OperationsShell } from "./OperationsShell";
 
 export function Shell() {
+  const { pathname } = useLocation();
+  if (pathname === "/control" || pathname === "/insights") return <OperationsShell />;
   return (
     <div className="shell">
       <BrowsingMotion />

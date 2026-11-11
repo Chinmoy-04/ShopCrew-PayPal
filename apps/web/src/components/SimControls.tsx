@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
+import { X } from "lucide-react";
 import { api, type Kpis, type SimState } from "../api/client";
 import { onLive } from "../hooks/useLiveEvents";
 import { useSimTime } from "../hooks/SimTimeContext";
@@ -10,7 +11,8 @@ export function SimControls({ demoPublicReset }: { demoPublicReset?: boolean }) 
   const [kpis, setKpis] = useState<Kpis | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [showSummary, setShowSummary] = useState(false);
+  const logId = useId();
+  const logTitleId = useId();
 
   async function refresh() {
     const [nextSim, nextKpis] = await Promise.all([api.sim(), api.kpis()]);
@@ -79,12 +81,17 @@ export function SimControls({ demoPublicReset }: { demoPublicReset?: boolean }) 
           </div>
         )}
         {kpis?.summary && (
-          <button type="button" className="btn control-summary-toggle" onClick={() => setShowSummary((v) => !v)}>
-            {showSummary ? "Hide log" : "Day log"}
+          <button type="button" className="btn control-summary-toggle" popoverTarget={logId} onClick={(event) => event.currentTarget.focus()}>
+            Day log
           </button>
         )}
       </div>
-      {showSummary && kpis?.summary && <p className="note control-summary">{kpis.summary}</p>}
+      {kpis?.summary && <section id={logId} popover="auto" className="day-log-panel" aria-labelledby={logTitleId}>
+        <header className="day-log-heading"><div><h2 id={logTitleId}>Day log</h2><p>Day {sim?.simDay ?? "—"} · Simulation summary</p></div>
+          <button type="button" className="day-log-close" popoverTarget={logId} popoverTargetAction="hide" aria-label="Close day log"><X aria-hidden="true" /></button>
+        </header>
+        <div className="day-log-body"><p>{kpis.summary}</p></div>
+      </section>}
       {error && <span className="note">{error}</span>}
     </div>
   );

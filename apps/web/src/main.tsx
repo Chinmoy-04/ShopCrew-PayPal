@@ -4,6 +4,7 @@ import { App } from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./styles/app.css";
 import "./styles/paper-ledger.css";
+import "./styles/operations.css";
 
 async function loadConfig(attempts = 8) {
   for (let i = 0; i < attempts; i++) {
