@@ -66,9 +66,9 @@ services:
         sync: false
       - key: DEMO_BUYER_HINT
         value: Use the sandbox buyer login supplied in the submission testing instructions.
-      # Optional shared demo: public reset with 60s cooldown (see DEMO_PUBLIC_RESET in .env.example)
+      # Judge access: shared sandbox reset with a 60-second cooldown.
       - key: DEMO_PUBLIC_RESET
-        value: "0"
+        value: "1"
 
   - type: workflow
     name: shopcrew-operations

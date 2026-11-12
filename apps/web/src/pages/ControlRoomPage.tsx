@@ -141,7 +141,7 @@ export function ControlRoomPage({
       <main className="page control-room">
         <header className="operations-heading"><div><h1>{operationsTabs.find(item => item.name === tab)?.label}</h1><p>{TAB_HINT[tab]}</p></div><span className="workspace-context">Control room</span></header>
         {demoPublicReset && (
-          <div className="banner banner-demo">Shared demo — data resets on cold start and after Reset (60s cooldown).</div>
+          <div className="banner banner-demo">Shared sandbox demo · Reset demo returns everyone to Day 0 and restores starting stock. PayPal transactions stay unchanged. 60-second reset cooldown.</div>
         )}
         {dryRun && <div className="banner">Sandbox credentials are empty, so refunds and payouts are dry-run and labeled DRY. Add keys in .env to hit PayPal.</div>}
         <OperationsPortal slot="simulation"><SimControls demoPublicReset={demoPublicReset} /></OperationsPortal>

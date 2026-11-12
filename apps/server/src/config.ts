@@ -52,5 +52,5 @@ export const settings = {
       .map((m) => m.trim())
       .filter(Boolean),
   databaseUrl: () => env("DATABASE_URL"),
-  demoPublicReset: () => env("DEMO_PUBLIC_RESET") === "1",
+  demoPublicReset: () => env("DEMO_PUBLIC_RESET") === "1" && env("PAYPAL_ENV", "sandbox") === "sandbox",
 };

@@ -1,8 +1,9 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { money } from "@shopcrew/shared";
 import { bus } from "../bus/events.js";
 import { db } from "../db/client.js";
-import { competitorPrices, messages, orderItems, orders, products, salesDaily, simState } from "../db/schema.js";
+import { competitorPrices, messages, orderItems, orders, products, proposals, salesDaily, simState } from "../db/schema.js";
+import { resetDatabase } from "../db/seed.js";
 import { runCustomerService, loadComplaints } from "../agents/cs/agent.js";
 import { runInventory } from "../agents/inventory/agent.js";
 import { runOrchestrator } from "../agents/orchestrator/agent.js";
@@ -11,10 +12,35 @@ import { mulberry32, poisson } from "./rng.js";
 import { planFor, type DayPlan } from "./scenario.js";
 
 let running = false;
+let resetting = false;
 let timer: NodeJS.Timeout | null = null;
 
 export function agentsRunning(): boolean {
   return running;
+}
+
+export function simulationResetting(): boolean {
+  return resetting;
+}
+
+/** Share the day-run lock so reset cannot erase work that is still executing. */
+export async function resetSimulation(beforeReset?: () => void) {
+  if (running) throw Object.assign(new Error("Wait for the current agent run to finish before resetting."), { statusCode: 409 });
+  running = true;
+  resetting = true;
+  try {
+    const [inFlight] = await db().select({ id: proposals.id }).from(proposals)
+      .where(inArray(proposals.status, ["approved", "auto_approved", "executing"])).limit(1);
+    if (inFlight) throw Object.assign(new Error("Wait for the current action to finish before resetting."), { statusCode: 409 });
+    beforeReset?.();
+    await setAutorun(false);
+    await resetDatabase();
+    bus.emit({ type: "sim.reset" });
+    return (await db().select().from(simState))[0];
+  } finally {
+    resetting = false;
+    running = false;
+  }
 }
 
 export async function advanceDay(): Promise<{ simDay: number; summary: string }> {
@@ -149,6 +175,7 @@ async function insertMessages(day: number, plan: DayPlan) {
 }
 
 export async function setAutorun(enabled: boolean) {
+  if (enabled && resetting) throw Object.assign(new Error("Wait for the demo reset to finish."), { statusCode: 409 });
   await db().update(simState).set({ autorun: enabled }).where(eq(simState.id, 1));
   if (timer) clearInterval(timer);
   timer = null;

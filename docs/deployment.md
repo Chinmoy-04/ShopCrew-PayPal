@@ -84,7 +84,7 @@ On the **web service**:
 - `PGLITE_DIR=/var/data/pglite`, `CAPTURE_POOL_PATH=/var/data/capture-pool.json` (Blueprint).
 - Leave `DATABASE_URL` unset. Do not enter a blank-looking placeholder URL.
 - Leave `CAPTURE_POOL_JSON` unset for a fresh hosted demo. It is an optional one-time bootstrap only when the mutable file does not exist.
-- `DEMO_PUBLIC_RESET=0` (Blueprint). To give judges reset access without sharing the admin token, deliberately change to `1`; this resets shared state and has a per-IP cooldown.
+- `DEMO_PUBLIC_RESET=1` (Blueprint) gives judges a shared sandbox reset to Day 0 without an admin token, with confirmation and a 60-second per-IP cooldown. Set `0` for an owner-only reset. Live PayPal mode always requires the admin token. For an existing service, update this value in Render's Environment settings; a code deployment alone does not change an existing environment value.
 - Optional provider and licence keys from step 3.
 - `RENDER_API_KEY`: generate a Render API key in your account settings. Store only on the web service; it authorizes paid Workflow dispatch. Use the least access Render offers and revoke after judging.
 - `RENDER_WORKFLOW_SLUG`: copy the actual Workflow slug from its Render page after creation (the part before `/operationsReview`).

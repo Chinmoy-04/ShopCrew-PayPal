@@ -71,7 +71,7 @@ export function SimClock({ compact = false }: { compact?: boolean }) {
   if (compact) {
     return (
       <div className={`sim-clock-compact ${autorun && !paused ? "running" : ""}`} aria-live="polite" title={autorun && !paused ? "Auto-run scrubbing the sim day" : "Midday snapshot"}>
-        <strong>Day {day || "…"}</strong>
+        <strong>Day {day}</strong>
         <span className="sim-clock-hms">{pad(hours)}:{pad(minutes)}</span>
         <span className="sim-clock-phase">{phase}</span>
         <div className="sim-clock-track compact" aria-hidden>
@@ -84,7 +84,7 @@ export function SimClock({ compact = false }: { compact?: boolean }) {
   return (
     <div className={`sim-clock ${autorun && !paused ? "running" : ""}`} aria-live="polite">
       <div className="sim-clock-main">
-        <div className="sim-clock-day">Day {day || "…"}</div>
+        <div className="sim-clock-day">Day {day}</div>
         <div className="sim-clock-time">
           <span className="sim-clock-hms">{pad(hours)}:{pad(minutes)}</span>
           <span className="sim-clock-phase">{phase}</span>

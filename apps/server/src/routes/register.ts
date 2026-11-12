@@ -27,7 +27,7 @@ import { paypal } from "../paypal/rest.js";
 import { applyPayPalEvent } from "../paypal/events.js";
 import { readWebhookHeaders, verifyWebhookSignature } from "../paypal/webhookVerify.js";
 import { evaluatePolicy } from "../policy/engine.js";
-import { advanceDay, setAutorun, setPaused } from "../sim/clock.js";
+import { advanceDay, resetSimulation, setAutorun, setPaused, simulationResetting } from "../sim/clock.js";
 import { explainProposal } from "../agents/explain.js";
 import { buildInsightsPayload, inventoryRows, kpis, refundAnomalies } from "../insights/buildInsights.js";
 import { registerStudioAiRoutes } from "./studioAi.js";
@@ -47,6 +47,11 @@ function requireAdmin(header: string | undefined) {
 }
 
 export async function registerRoutes(app: FastifyInstance) {
+  app.addHook("preHandler", async (request) => {
+    if (request.method !== "GET" && simulationResetting()) {
+      throw Object.assign(new Error("Wait for the demo reset to finish."), { statusCode: 409 });
+    }
+  });
   app.get("/healthz", async () => ({ ok: true, service: "shopcrew", time: nowIso(), db: process.env.DATABASE_URL ? "postgres" : "pglite", dryRun: !paypal.configured() }));
 
   app.get("/api/config", async () => ({
@@ -408,14 +413,11 @@ export async function registerRoutes(app: FastifyInstance) {
     return (await db().select().from(simState))[0];
   });
   app.post("/api/sim/reset", async (req) => {
-    if (settings.demoPublicReset()) {
-      enforcePublicResetCooldown(clientIp(req));
-    } else {
+    const publicReset = settings.demoPublicReset();
+    if (!publicReset) {
       requireAdmin(req.headers["x-admin-token"] as string | undefined);
     }
-    await resetDatabase();
-    bus.emit({ type: "sim.reset" });
-    return (await db().select().from(simState))[0];
+    return resetSimulation(publicReset ? () => enforcePublicResetCooldown(clientIp(req)) : undefined);
   });
 
   app.get("/api/kpis", async () => kpis());

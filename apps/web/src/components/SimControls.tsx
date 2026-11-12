@@ -56,20 +56,21 @@ export function SimControls({ demoPublicReset }: { demoPublicReset?: boolean }) 
             disabled={busy}
             title={
               demoPublicReset
-                ? "Shared demo reset (60s cooldown, no token)"
-                : "Uses ADMIN_TOKEN from .env (default shopcrew-demo locally; random on Render)"
+                ? "Reset the shared demo to Day 0 (60-second cooldown)"
+                : "Owner-only reset"
             }
             onClick={() => {
               if (demoPublicReset) {
+                if (!window.confirm("Reset the shared demo to Day 0?\n\nThis restores starting stock, demo orders and agent decisions for everyone, and stops auto-run. PayPal transactions and the remaining refundable balances are not reset.\n\nWait 60 seconds before resetting again.")) return;
                 void run(() => api.reset());
                 return;
               }
-              const token = window.prompt("Admin token (ADMIN_TOKEN from .env)", "shopcrew-demo");
+              const token = window.prompt("Owner admin token", "");
               if (token === null) return;
               void run(() => api.reset(token));
             }}
           >
-            Reset
+            {demoPublicReset ? "Reset demo" : "Reset"}
           </button>
         </div>
         {kpis && (
@@ -92,7 +93,7 @@ export function SimControls({ demoPublicReset }: { demoPublicReset?: boolean }) 
         </header>
         <div className="day-log-body"><p>{kpis.summary}</p></div>
       </section>}
-      {error && <span className="note">{error}</span>}
+      {error && <span className="note" role="alert">{error}</span>}
     </div>
   );
 }
