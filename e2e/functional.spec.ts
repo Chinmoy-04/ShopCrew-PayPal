@@ -18,7 +18,7 @@ test('SHOP-01 catalog, cart persistence, quantity, removal, clear', async ({ pag
   const product = products.find((p: any) => p.stock > 2);
   await page.goto(`/shop/${product.sku}`);
   await activate(page.getByRole('button', { name: 'Add to cart', exact: true }));
-  await page.getByRole('button', { name: 'Added', exact: true }).click();
+  await page.getByRole('button', { name: 'Increase quantity', exact: true }).click();
   await page.getByRole('link', { name: 'Cart', exact: true }).last().click();
   await expect(page.getByRole('spinbutton')).toHaveValue('2');
   await page.reload();

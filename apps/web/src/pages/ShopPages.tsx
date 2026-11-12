@@ -1,20 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, ArrowRight, Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, type Product } from "../api/client";
 import { ProductImage } from "../components/ProductImage";
 import { Reveal } from "../components/BrowsingMotion";
-
-export function cartItems(): { sku: string; qty: number }[] {
-  try {
-    const value = JSON.parse(localStorage.getItem("shopcrew-cart") || "[]");
-    if (!Array.isArray(value)) return [];
-    return value.filter((item) => item && typeof item.sku === "string" && Number.isInteger(item.qty) && item.qty > 0);
-  }
-  catch { return []; }
-}
-export function saveCart(items: { sku: string; qty: number }[]) {
-  localStorage.setItem("shopcrew-cart", JSON.stringify(items));
-}
+import { cartItems, saveCart, subscribeToCart, useCartCount } from "../lib/cart";
+import { CartLink } from "../components/CartLink";
+export { cartItems, saveCart } from "../lib/cart";
 
 function HowToTest({ hint, email }: { hint?: string; email?: string }) {
   return (
@@ -63,11 +55,26 @@ export function ProductPage() {
   const { sku = "" } = useParams();
   const [product, setProduct] = useState<Product | null>(null);
   const [error, setError] = useState("");
-  const [added, setAdded] = useState(false);
+  const addButton = useRef<HTMLButtonElement>(null);
+  const decreaseButton = useRef<HTMLButtonElement>(null);
+  const quantityInCart = useCartCount(sku);
   useEffect(() => { api.product(sku).then(setProduct).catch((err) => setError(err.message)); }, [sku]);
   if (error) return <main className="page store-page"><div className="error">{error}</div></main>;
   if (!product) return <main className="page store-page"><p className="note">Loading…</p></main>;
   const atZero = product.stock <= 0;
+  function adjustQuantity(delta: -1 | 1) {
+    if (!product) return;
+    const items = cartItems();
+    const found = items.find(item => item.sku === product.sku);
+    const quantity = found?.qty ?? 0;
+    if (delta > 0 && quantity >= product.stock) return;
+    const nextQuantity = Math.max(0, quantity + delta);
+    if (found) found.qty = nextQuantity;
+    else if (nextQuantity > 0) items.push({ sku: product.sku, qty: nextQuantity });
+    saveCart(items.filter(item => item.qty > 0), delta > 0 ? product.name : undefined);
+    if (nextQuantity === 0) requestAnimationFrame(() => addButton.current?.focus());
+    else if (quantity === 0) requestAnimationFrame(() => decreaseButton.current?.focus());
+  }
   return (
     <main className="page store-page product-page">
       <Link className="text-link product-back" to="/shop">Back to all candles</Link>
@@ -78,26 +85,23 @@ export function ProductPage() {
       <p>{product.blurb}</p>
       <p className="price">${product.price.toFixed(2)} · {product.stock} in stock</p>
       {product.priceNote && <p className="note">{product.priceNote}</p>}
-      <button
+      <div className="product-purchase-actions">
+      {quantityInCart > 0 ? <div className="product-quantity-stepper" role="group" aria-label={`Quantity for ${product.name}`}>
+        <button ref={decreaseButton} type="button" aria-label="Decrease quantity" title="Remove one" onClick={() => adjustQuantity(-1)}><Minus aria-hidden="true" /></button>
+        <span className="product-quantity-value" aria-live="polite" aria-atomic="true">{quantityInCart}</span>
+        <button type="button" aria-label="Increase quantity" title={quantityInCart >= product.stock ? "Stock limit reached" : "Add one"} disabled={quantityInCart >= product.stock} onClick={() => adjustQuantity(1)}><Plus aria-hidden="true" /></button>
+      </div> : <button
+        ref={addButton}
         className="btn primary"
         disabled={atZero}
         title={atZero ? "Out of stock" : "Add to cart"}
-        onClick={() => {
-          const items = cartItems();
-          const found = items.find((item) => item.sku === product.sku);
-          if (found) {
-            if (found.qty >= product.stock) return;
-            found.qty += 1;
-          } else {
-            items.push({ sku: product.sku, qty: 1 });
-          }
-          saveCart(items);
-          setAdded(true);
-        }}
+        onClick={() => adjustQuantity(1)}
       >
-        {atZero ? "Out of stock" : added ? "Added" : "Add to cart"}
-      </button>
-      <Link className="btn product-cart-link" to="/cart">Cart</Link>
+        {atZero ? "Out of stock" : "Add to cart"}
+      </button>}
+      <CartLink className="btn product-cart-link" />
+      </div>
+      {quantityInCart > 0 && <p className="product-cart-quantity">{quantityInCart} in your cart</p>}
       </div>
       </div>
     </main>
@@ -107,17 +111,21 @@ export function ProductPage() {
 export function CartPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [items, setItems] = useState(cartItems());
+  useEffect(() => subscribeToCart(() => setItems(cartItems())), []);
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({});
   const [catalogError, setCatalogError] = useState("");
+  const [catalogLoaded, setCatalogLoaded] = useState(false);
   useEffect(() => {
     let mounted = true;
-    void api.products().then(rows => { if (mounted) setProducts(rows); }).catch(error => {
+    void api.products().then(rows => { if (mounted) { setProducts(rows); setCatalogLoaded(true); } }).catch(error => {
       if (mounted) setCatalogError(error instanceof Error ? error.message : "Could not load products");
     });
     return () => { mounted = false; };
   }, []);
   const rows = items.map((item) => ({ ...item, product: products.find((product) => product.sku === item.sku) }));
   const total = rows.reduce((sum, row) => sum + (row.product?.price ?? 0) * row.qty, 0);
+  const itemCount = items.reduce((sum, item) => sum + item.qty, 0);
+  const unavailable = catalogLoaded && rows.some(row => !row.product || row.product.stock < row.qty);
 
   function updateQty(sku: string, qty: number) {
     const product = products.find((p) => p.sku === sku);
@@ -138,16 +146,23 @@ export function CartPage() {
 
   return (
     <main className="page store-page cart-page">
-      <h1>Cart</h1>
+      <header className="cart-heading"><div><h1>Your cart<span className="cart-heading-count">{itemCount}</span></h1><p>A little warmth, ready to come home.</p></div><Link className="text-link" to="/shop"><ArrowLeft aria-hidden="true" />Continue shopping</Link></header>
       {catalogError && <div className="error" role="alert">{catalogError}</div>}
-      {!rows.length && <div className="empty">The cart is empty. <Link to="/shop">Browse the shop.</Link></div>}
+      {!rows.length ? <section className="cart-empty-state"><ShoppingBag aria-hidden="true" /><h2>Make room for a little warmth.</h2><p>The cart is empty. Find a scent for your everyday ritual.</p><Link className="btn primary" to="/shop">Browse the shop.<ArrowRight aria-hidden="true" /></Link></section> : <div className="cart-layout">
+      <section className="cart-items" aria-label="Cart items">
+      <div className="cart-list-heading"><span>{itemCount} {itemCount === 1 ? "item" : "items"}</span><span>Total</span></div>
       {rows.map((row) => (
-        <div key={row.sku} className="feed-row cart-row">
-          <span>{row.product?.name ?? row.sku}</span>
-          <label>
-            Qty
+        <article key={row.sku} className="cart-line" aria-label={row.product?.name ?? row.sku}>
+          <Link to={`/shop/${row.sku}`} className="cart-line-image" aria-label={`View ${row.product?.name ?? row.sku}`}>{row.product ? <ProductImage product={row.product} /> : <ShoppingBag aria-hidden="true" />}</Link>
+          <div className="cart-line-details"><Link className="cart-line-title" to={`/shop/${row.sku}`}>{row.product?.name ?? row.sku}</Link>
+          <p className="cart-line-scent">{row.product?.blurb ?? (catalogLoaded ? "This product is no longer available." : "Loading product details…")}</p>
+          <span className="cart-unit-price">{row.product ? `$${row.product.price.toFixed(2)} each` : "—"}</span>
+          {catalogLoaded && row.product && row.qty > row.product.stock && <p className="cart-stock-warning" role="status">{row.product.stock > 0 ? `Only ${row.product.stock} available. Reduce the quantity to continue.` : "Out of stock. Remove this item to continue."}</p>}
+          <div className="cart-line-controls"><div className="cart-quantity-control" role="group" aria-label={`Quantity for ${row.product?.name ?? row.sku}`}>
+            <button type="button" aria-label={`Decrease ${row.product?.name ?? row.sku} quantity`} disabled={!row.product} onClick={() => updateQty(row.sku, row.qty - 1)}><Minus aria-hidden="true" /></button>
             <input
               type="number"
+              aria-label={`Quantity for ${row.product?.name ?? row.sku}`}
               disabled={!row.product}
               min={1}
               max={row.product?.stock ?? 1}
@@ -163,18 +178,24 @@ export function CartPage() {
                 return next;
               })}
             />
-          </label>
-          <span>${((row.product?.price ?? 0) * row.qty).toFixed(2)}</span>
-          <button type="button" className="btn" onClick={() => remove(row.sku)}>Remove</button>
-        </div>
+            <button type="button" aria-label={`Increase ${row.product?.name ?? row.sku} quantity`} disabled={!row.product || row.qty >= row.product.stock} onClick={() => updateQty(row.sku, row.qty + 1)}><Plus aria-hidden="true" /></button>
+          </div>
+          <button type="button" className="cart-remove" onClick={() => remove(row.sku)}><Trash2 aria-hidden="true" />Remove</button></div></div>
+          <strong className="cart-line-total">{row.product ? `$${(row.product.price * row.qty).toFixed(2)}` : "—"}</strong>
+        </article>
       ))}
-      {!!rows.length && (
-        <div className="cart-footer">
-          <p className="cart-total">Total <strong>${total.toFixed(2)}</strong></p>
-          <Link className="btn primary" to="/checkout">Checkout</Link>
-        </div>
-      )}
-      {!!rows.length && <button className="btn" onClick={() => { saveCart([]); setItems([]); }}>Clear</button>}
+      <div className="cart-list-footer"><Link className="text-link" to="/shop"><ArrowLeft aria-hidden="true" />Explore more scents</Link><button type="button" className="cart-clear" aria-label="Clear" onClick={() => { saveCart([]); setItems([]); }}>Clear cart</button></div>
+      </section>
+      <aside className="cart-summary" aria-label="Order summary"><h2>Order summary</h2>
+          <dl><div><dt>Subtotal ({itemCount} {itemCount === 1 ? "item" : "items"})</dt><dd>{catalogLoaded ? `$${total.toFixed(2)}` : "—"}</dd></div></dl>
+          <div className="cart-summary-total">
+          <p className="cart-total">Total <strong>{catalogLoaded ? `$${total.toFixed(2)}` : "—"}</strong></p>
+          </div>
+          {unavailable && <p className="cart-stock-warning" role="status">Update unavailable items before checking out.</p>}
+          {!catalogLoaded || unavailable ? <button type="button" className="btn primary cart-checkout" disabled>Checkout<ArrowRight aria-hidden="true" /></button> : <Link className="btn primary cart-checkout" to="/checkout">Checkout<ArrowRight aria-hidden="true" /></Link>}
+          <p className="cart-checkout-note">Review your order and payment on the next step.</p>
+          <div className="cart-summary-brand"><span>Hearth &amp; Wick</span><p>A little warmth.<br /><em>A place to slow down.</em></p></div>
+      </aside></div>}
     </main>
   );
 }

@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
-import { ArrowUpRight, BarChart3, Boxes, ChevronLeft, ClipboardCheck, House, Inbox, ListOrdered, Menu, ReceiptText, ScrollText, ShieldCheck, ShoppingBag, ShoppingCart } from "lucide-react";
+import { ArrowUpRight, BarChart3, Boxes, ChevronLeft, ClipboardCheck, House, Inbox, ListOrdered, Menu, ReceiptText, ScrollText, ShieldCheck, ShoppingBag } from "lucide-react";
+import { CartLink } from "./CartLink";
 
 export const operationsTabs = [
   { name: "decisions", label: "Decisions", icon: ClipboardCheck },
@@ -73,7 +74,7 @@ export function OperationsShell() {
           <nav className="workspace-exits" aria-label="Store and home">
             <Link to="/" aria-label="Home" title="Home"><House aria-hidden="true" /><span className="sidebar-label">Home</span></Link>
             <NavLink to="/shop" aria-label="Shop" title="Shop"><ShoppingBag aria-hidden="true" /><span className="sidebar-label">Shop</span></NavLink>
-            <NavLink to="/cart" aria-label="Cart" title="Cart"><ShoppingCart aria-hidden="true" /><span className="sidebar-label">Cart</span></NavLink>
+            <CartLink />
           </nav>
           <div className="workspace-owner sidebar-label"><span className="workspace-avatar" aria-hidden="true">M</span><span><strong>Maya's workspace</strong><small>Store operations</small></span></div>
         </div>
