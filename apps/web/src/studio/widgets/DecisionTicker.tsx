@@ -2,7 +2,12 @@ import type { AgWidgetParams } from "ag-studio";
 import type { DecisionTickerData } from "../registry";
 import { readNumber, readString, useWidgetRows } from "./useWidgetRows";
 
-type TickerRow = { summary: string; status: string; amount: number; agent: string };
+type TickerRow = {
+  summary: string;
+  status: string;
+  amount: number;
+  agent: string;
+};
 
 function statusChipClass(status: string): string {
   const s = status.toLowerCase();
@@ -44,13 +49,12 @@ export function DecisionTicker(params: AgWidgetParams<DecisionTickerData>) {
 
   return (
     <div className="sc-ticker">
-      {params.format?.title?.enabled !== false && params.format?.title?.text && (
-        <div className="sc-ticker__title">{params.format.title.text}</div>
-      )}
       <ul className="sc-ticker__list">
         {rows.map((row, i) => (
           <li key={`${row.summary}-${i}`} className="sc-ticker__item">
-            <span className={statusChipClass(row.status)}>{row.status.replace(/_/g, " ")}</span>
+            <span className={statusChipClass(row.status)}>
+              {row.status.replace(/_/g, " ")}
+            </span>
             <p className="sc-ticker__summary">{row.summary}</p>
             <div className="sc-ticker__foot">
               <span>{row.agent}</span>

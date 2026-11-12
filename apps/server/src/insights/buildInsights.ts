@@ -263,26 +263,4 @@ export async function buildInsightsPayload() {
   };
 }
 
-export function refundAnomalies(refundRows: { day: number; amount: number }[], sigma = 2) {
-  const byDay = new Map<number, number>();
-  for (const row of refundRows) {
-    byDay.set(row.day, (byDay.get(row.day) ?? 0) + row.amount);
-  }
-  const days = [...byDay.entries()].sort((a, b) => a[0] - b[0]);
-  if (days.length < 3) {
-    return {
-      spike: null as null | { day: number; amount: number; z: number },
-      series: days.map(([day, amount]) => ({ day, amount, z: 0 })),
-      mean: 0,
-      std: 0,
-      sigma,
-    };
-  }
-  const values = days.map(([, amount]) => amount);
-  const mean = values.reduce((a, b) => a + b, 0) / values.length;
-  const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length;
-  const std = Math.sqrt(variance) || 1;
-  const series = days.map(([day, amount]) => ({ day, amount, z: (amount - mean) / std }));
-  const spikes = series.filter((s) => s.z >= sigma).sort((a, b) => b.z - a.z);
-  return { spike: spikes[0] ?? null, series, mean, std, sigma };
-}
+export { refundAnomalies } from "@shopcrew/shared";

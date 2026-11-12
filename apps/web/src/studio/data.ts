@@ -1,13 +1,38 @@
-import type { AgDataSourcesDefinition, AgFieldDefinition, AgFormat, AgRelationDefinition } from "ag-studio";
-import type { InventoryRow, Kpis, OrderRow, Policy, Proposal } from "../api/client";
+import { dailyInsights } from "@shopcrew/shared";
+import type {
+  AgDataSourcesDefinition,
+  AgFieldDefinition,
+  AgFormat,
+  AgRelationDefinition,
+} from "ag-studio";
+import type {
+  InventoryRow,
+  Kpis,
+  OrderRow,
+  Policy,
+  Proposal,
+} from "../api/client";
 
-type FieldSpec = [id: string, name: string, format: AgFormat, hide?: boolean, description?: string];
+type FieldSpec = [
+  id: string,
+  name: string,
+  format: AgFormat,
+  hide?: boolean,
+  description?: string,
+];
 
 function fields(specs: FieldSpec[]): AgFieldDefinition[] {
   return specs.map(([id, name, format, hide, description]) => ({
     id,
     name,
     format,
+    ...(format === "currencyFormat"
+      ? {
+          formatOptions: {
+            format: "$#,##0.00",
+          },
+        }
+      : {}),
     ...(hide ? { hide: true } : {}),
     ...(description ? { description } : {}),
   }));
@@ -15,13 +40,26 @@ function fields(specs: FieldSpec[]): AgFieldDefinition[] {
 
 export interface InsightsPayload {
   kpis: Kpis & {
-    budgetBurn?: { agent: string; spent: number; pending: number; dailyBudget: number; burnPct: number }[];
+    budgetBurn?: {
+      agent: string;
+      spent: number;
+      pending: number;
+      dailyBudget: number;
+      burnPct: number;
+    }[];
   };
   policies: Policy[];
   proposals: Proposal[];
   orders: OrderRow[];
   inventory: InventoryRow[];
-  payouts: { id: string; amount: number; status: string; receiver: string; sku: string; createdAt: string }[];
+  payouts: {
+    id: string;
+    amount: number;
+    status: string;
+    receiver: string;
+    sku: string;
+    createdAt: string;
+  }[];
   salesDaily?: {
     id: string;
     sku: string;
@@ -43,7 +81,13 @@ export interface InsightsPayload {
     agent: string;
     proposalId: string;
   }[];
-  agentRuns?: { id: string; agent: string; day: number; decisions: number; spend: number }[];
+  agentRuns?: {
+    id: string;
+    agent: string;
+    day: number;
+    decisions: number;
+    spend: number;
+  }[];
   negotiations?: {
     id: string;
     supplier: string;
@@ -69,7 +113,9 @@ export interface InsightsPayload {
   }[];
 }
 
-export function buildStudioData(payload: InsightsPayload): AgDataSourcesDefinition {
+export function buildStudioData(
+  payload: InsightsPayload,
+): AgDataSourcesDefinition {
   const decisions = payload.proposals
     .filter((row) => row.id !== "pending-total")
     .map((row) => ({
@@ -85,7 +131,9 @@ export function buildStudioData(payload: InsightsPayload): AgDataSourcesDefiniti
       risk: row.riskScore ?? 0,
       confidence: row.confidenceModel ?? 0,
       movesMoney: ["refund", "payout"].includes(row.type) ? "yes" : "no",
-      simulated: (row.inputs as { simulated?: boolean } | null)?.simulated ? "yes" : "no",
+      simulated: (row.inputs as { simulated?: boolean } | null)?.simulated
+        ? "yes"
+        : "no",
     }));
 
   const orders = payload.orders.map((row) => ({
@@ -122,8 +170,17 @@ export function buildStudioData(payload: InsightsPayload): AgDataSourcesDefiniti
 
   const burn = payload.kpis.budgetBurn ?? [];
   const avgBurn =
-    burn.length > 0 ? burn.reduce((sum, row) => sum + row.burnPct, 0) / burn.length : payload.kpis.budget > 0 ? payload.kpis.spendToday / payload.kpis.budget : 0;
+    burn.length > 0
+      ? burn.reduce((sum, row) => sum + row.burnPct, 0) / burn.length
+      : payload.kpis.budget > 0
+        ? payload.kpis.spendToday / payload.kpis.budget
+        : 0;
 
+  const daily = dailyInsights(
+    payload.proposals,
+    payload.policies,
+    payload.kpis.simDay,
+  );
   const snapshot = [
     {
       id: "today",
@@ -137,7 +194,16 @@ export function buildStudioData(payload: InsightsPayload): AgDataSourcesDefiniti
       budget: payload.kpis.budget,
       hoursSaved: payload.kpis.hoursSaved,
       budgetUsedPct: avgBurn,
-      brief: payload.kpis.summary || "ShopCrew Insights — advance a day in the control room to generate live decisions.",
+      pendingAll: daily.pendingAll,
+      policyApprovedToday: daily.autoApproved,
+      pendingEarlier: daily.pendingEarlier,
+      committedToday: daily.committed,
+      dailyBudget: daily.budget,
+      budgetCommittedPct: daily.utilization,
+      estimatedHours: daily.estimatedHours,
+      brief:
+        payload.kpis.summary ||
+        "ShopCrew Insights — advance a day in the control room to generate live decisions.",
     },
   ];
 
@@ -169,7 +235,9 @@ export function buildStudioData(payload: InsightsPayload): AgDataSourcesDefiniti
     status: row.status,
     toolCount: Array.isArray(row.toolCalls) ? row.toolCalls.length : 0,
     createdAt: row.createdAt.slice(0, 19).replace("T", " "),
-    finishedAt: row.finishedAt ? row.finishedAt.slice(0, 19).replace("T", " ") : "",
+    finishedAt: row.finishedAt
+      ? row.finishedAt.slice(0, 19).replace("T", " ")
+      : "",
   }));
 
   const relations: AgRelationDefinition[] = [
@@ -199,30 +267,90 @@ export function buildStudioData(payload: InsightsPayload): AgDataSourcesDefiniti
     relationships: relations,
     sources: [
       {
+        id: "daily_budget_burn",
+        name: "Daily budget by agent",
+        data: daily.agents,
+        fields: fields([
+          ["agent", "Agent", "textFormat"],
+          ["spent", "Committed today", "currencyFormat"],
+          ["dailyBudget", "Configured daily budget", "currencyFormat"],
+        ]),
+      },
+      {
         id: "decisions",
         name: "Agent decisions",
-        description: "Every proposal the CS, inventory, pricing, and supplier agents made. Includes seeded simulated history.",
+        description:
+          "Every proposal the CS, inventory, pricing, and supplier agents made. Includes seeded simulated history.",
         data: decisions,
         fields: fields([
           ["id", "Decision ID", "textFormat", true, "Unique proposal id"],
-          ["day", "Sim day", "integerFormat", false, "Simulation day of the proposal"],
+          [
+            "day",
+            "Sim day",
+            "integerFormat",
+            false,
+            "Simulation day of the proposal",
+          ],
           ["agent", "Agent", "textFormat", false, "Owning agent id"],
-          ["type", "Type", "textFormat", false, "refund, payout, price_change, discount, reply"],
-          ["status", "Status", "textFormat", false, "Policy / execution status"],
+          [
+            "type",
+            "Type",
+            "textFormat",
+            false,
+            "refund, payout, price_change, discount, reply",
+          ],
+          [
+            "status",
+            "Status",
+            "textFormat",
+            false,
+            "Policy / execution status",
+          ],
           ["amount", "Amount", "currencyFormat", false, "USD amount proposed"],
-          ["summary", "Summary", "textFormat", false, "One-line owner-facing summary"],
-          ["reason", "Reason", "textFormat", false, "Complaint or pricing reason"],
+          [
+            "summary",
+            "Summary",
+            "textFormat",
+            false,
+            "One-line owner-facing summary",
+          ],
+          [
+            "reason",
+            "Reason",
+            "textFormat",
+            false,
+            "Complaint or pricing reason",
+          ],
           ["decidedBy", "Decided by", "textFormat", false, "policy or owner"],
           ["risk", "Risk score", "decimalFormat", false, "0–100 risk"],
-          ["confidence", "Model confidence", "percentageFormat", false, "Model confidence 0–1"],
-          ["movesMoney", "Moves money", "textFormat", false, "yes if refund or payout"],
-          ["simulated", "Simulated", "textFormat", false, "yes if seeded history"],
+          [
+            "confidence",
+            "Model confidence",
+            "percentageFormat",
+            false,
+            "Model confidence 0–1",
+          ],
+          [
+            "movesMoney",
+            "Moves money",
+            "textFormat",
+            false,
+            "yes if refund or payout",
+          ],
+          [
+            "simulated",
+            "Simulated",
+            "textFormat",
+            false,
+            "yes if seeded history",
+          ],
         ]),
       },
       {
         id: "orders",
         name: "Orders",
-        description: "Shop orders from simulation and live PayPal sandbox checkouts.",
+        description:
+          "Shop orders from simulation and live PayPal sandbox checkouts.",
         data: orders,
         fields: fields([
           ["id", "Order ID", "textFormat", true, "Order id"],
@@ -231,7 +359,13 @@ export function buildStudioData(payload: InsightsPayload): AgDataSourcesDefiniti
           ["source", "Source", "textFormat", false, "paypal or other"],
           ["status", "Order status", "textFormat", false, "CAPTURED etc."],
           ["total", "Order total", "currencyFormat", false, "USD total"],
-          ["refunded", "Refunded", "currencyFormat", false, "USD refunded so far"],
+          [
+            "refunded",
+            "Refunded",
+            "currencyFormat",
+            false,
+            "USD refunded so far",
+          ],
           ["createdAt", "Order date", "dateFormat", false, "ISO date"],
         ]),
       },
@@ -244,11 +378,35 @@ export function buildStudioData(payload: InsightsPayload): AgDataSourcesDefiniti
           ["sku", "SKU", "textFormat", false, "Product SKU"],
           ["name", "Product", "textFormat", false, "Product name"],
           ["stock", "Stock", "integerFormat", false, "Units on hand"],
-          ["daysOfCover", "Days of cover", "decimalFormat", false, "Cover at forecast demand"],
-          ["forecast", "Forecast / day", "decimalFormat", false, "Forecast units per day"],
-          ["reorderPoint", "Reorder point", "decimalFormat", false, "Reorder threshold"],
+          [
+            "daysOfCover",
+            "Days of cover",
+            "decimalFormat",
+            false,
+            "Cover at forecast demand",
+          ],
+          [
+            "forecast",
+            "Forecast / day",
+            "decimalFormat",
+            false,
+            "Forecast units per day",
+          ],
+          [
+            "reorderPoint",
+            "Reorder point",
+            "decimalFormat",
+            false,
+            "Reorder threshold",
+          ],
           ["price", "Price", "currencyFormat", false, "Shelf price"],
-          ["leadTimeDays", "Lead time", "integerFormat", false, "Supplier lead time days"],
+          [
+            "leadTimeDays",
+            "Lead time",
+            "integerFormat",
+            false,
+            "Supplier lead time days",
+          ],
           ["needsReorder", "Needs reorder", "textFormat", false, "yes/no"],
         ]),
       },
@@ -260,7 +418,13 @@ export function buildStudioData(payload: InsightsPayload): AgDataSourcesDefiniti
         fields: fields([
           ["id", "Payout ID", "textFormat", true, "Payout id"],
           ["amount", "Payout amount", "currencyFormat", false, "USD amount"],
-          ["status", "Payout status", "textFormat", false, "SUCCESS, UNCLAIMED, etc."],
+          [
+            "status",
+            "Payout status",
+            "textFormat",
+            false,
+            "SUCCESS, UNCLAIMED, etc.",
+          ],
           ["receiver", "Receiver", "textFormat", false, "PayPal email"],
           ["sku", "SKU", "textFormat", false, "Related SKU"],
           ["createdAt", "Payout date", "dateFormat", false, "Created date"],
@@ -269,20 +433,80 @@ export function buildStudioData(payload: InsightsPayload): AgDataSourcesDefiniti
       {
         id: "snapshot",
         name: "Today snapshot",
-        description: "Single-row KPI snapshot for the current sim day, including per-agent average burn.",
+        description:
+          "Single-row KPI snapshot for the current sim day, including per-agent average burn.",
         data: snapshot,
         fields: fields([
           ["id", "Snapshot ID", "textFormat", true, "Always today"],
           ["simDay", "Sim day", "integerFormat", false, "Current sim day"],
-          ["revenueToday", "Revenue today", "currencyFormat", false, "Order revenue today"],
-          ["decisions", "Decisions", "integerFormat", false, "Decision count today"],
-          ["autoApproved", "Auto-approved", "integerFormat", false, "Auto-approved count"],
-          ["manualApproved", "Manual-approved", "integerFormat", false, "Owner approvals"],
+          [
+            "revenueToday",
+            "Revenue today",
+            "currencyFormat",
+            false,
+            "Order revenue today",
+          ],
+          [
+            "decisions",
+            "Decisions",
+            "integerFormat",
+            false,
+            "Decision count today",
+          ],
+          [
+            "autoApproved",
+            "Auto-approved",
+            "integerFormat",
+            false,
+            "Auto-approved count",
+          ],
+          [
+            "manualApproved",
+            "Manual-approved",
+            "integerFormat",
+            false,
+            "Owner approvals",
+          ],
           ["pending", "Pending", "integerFormat", false, "Awaiting owner"],
-          ["spendToday", "Spend today", "currencyFormat", false, "Refund+payout spend"],
-          ["budget", "Daily budget", "currencyFormat", false, "Sum of agent budgets"],
-          ["hoursSaved", "Hours saved", "decimalFormat", false, "Estimated hours"],
-          ["budgetUsedPct", "Budget used", "percentageFormat", false, "Average per-agent burn"],
+          [
+            "spendToday",
+            "Spend today",
+            "currencyFormat",
+            false,
+            "Refund+payout spend",
+          ],
+          [
+            "budget",
+            "Daily budget",
+            "currencyFormat",
+            false,
+            "Sum of agent budgets",
+          ],
+          [
+            "hoursSaved",
+            "Hours saved",
+            "decimalFormat",
+            false,
+            "Estimated hours",
+          ],
+          [
+            "budgetUsedPct",
+            "Budget used",
+            "percentageFormat",
+            false,
+            "Average per-agent burn",
+          ],
+          ["pendingAll", "All awaiting approval", "integerFormat"],
+          ["policyApprovedToday", "Policy-approved today", "integerFormat"],
+          ["pendingEarlier", "Earlier-day approvals", "integerFormat"],
+          ["committedToday", "Committed today", "currencyFormat"],
+          ["dailyBudget", "Configured daily budget", "currencyFormat"],
+          [
+            "budgetCommittedPct",
+            "Daily budget utilization",
+            "percentageFormat",
+          ],
+          ["estimatedHours", "Estimated hours saved", "decimalFormat"],
           ["brief", "Brief", "textFormat", false, "Live operations brief text"],
         ]),
       },
@@ -294,14 +518,27 @@ export function buildStudioData(payload: InsightsPayload): AgDataSourcesDefiniti
         fields: fields([
           ["agent", "Agent", "textFormat", false, "Agent id"],
           ["enabled", "Enabled", "textFormat", false, "on/off"],
-          ["autoApproveMax", "Auto-approve max", "currencyFormat", false, "Auto-approve ceiling"],
-          ["dailyBudget", "Daily budget", "currencyFormat", false, "Daily spend budget"],
+          [
+            "autoApproveMax",
+            "Auto-approve max",
+            "currencyFormat",
+            false,
+            "Auto-approve ceiling",
+          ],
+          [
+            "dailyBudget",
+            "Daily budget",
+            "currencyFormat",
+            false,
+            "Daily spend budget",
+          ],
         ]),
       },
       {
         id: "sales_daily",
         name: "Sales daily",
-        description: "180 days of units, revenue, price and forecast bands by SKU.",
+        description:
+          "180 days of units, revenue, price and forecast bands by SKU.",
         data: sales,
         fields: fields([
           ["id", "Row ID", "textFormat", true, "Sale row id"],
@@ -318,7 +555,8 @@ export function buildStudioData(payload: InsightsPayload): AgDataSourcesDefiniti
       {
         id: "refunds",
         name: "Refunds",
-        description: "Refund dollars by day with toolkit/REST/dry execution path.",
+        description:
+          "Refund dollars by day with toolkit/REST/dry execution path.",
         data: refunds,
         fields: fields([
           ["id", "Refund ID", "textFormat", true, "Refund row id"],
@@ -326,7 +564,13 @@ export function buildStudioData(payload: InsightsPayload): AgDataSourcesDefiniti
           ["amount", "Amount", "currencyFormat", false, "USD refunded"],
           ["status", "Status", "textFormat", false, "Refund status"],
           ["day", "Sim day", "integerFormat", false, "Sim day"],
-          ["path", "Path", "textFormat", false, "toolkit, rest, dry, dry_exhausted"],
+          [
+            "path",
+            "Path",
+            "textFormat",
+            false,
+            "toolkit, rest, dry, dry_exhausted",
+          ],
           ["agent", "Agent", "textFormat", false, "Usually cs"],
           ["proposalId", "Proposal", "textFormat", true, "Linked proposal"],
         ]),
@@ -368,8 +612,20 @@ export function buildStudioData(payload: InsightsPayload): AgDataSourcesDefiniti
           ["sku", "SKU", "textFormat", false, "SKU"],
           ["saving", "Saving", "currencyFormat", false, "USD saved vs list"],
           ["rounds", "Rounds", "integerFormat", false, "Negotiation rounds"],
-          ["listUnitCost", "List unit cost", "currencyFormat", false, "Opening unit cost"],
-          ["finalUnitCost", "Final unit cost", "currencyFormat", false, "Agreed unit cost"],
+          [
+            "listUnitCost",
+            "List unit cost",
+            "currencyFormat",
+            false,
+            "Opening unit cost",
+          ],
+          [
+            "finalUnitCost",
+            "Final unit cost",
+            "currencyFormat",
+            false,
+            "Agreed unit cost",
+          ],
           ["qty", "Qty", "integerFormat", false, "Units ordered"],
         ]),
       },
@@ -385,7 +641,13 @@ export function buildStudioData(payload: InsightsPayload): AgDataSourcesDefiniti
           ["agentId", "Agent", "textFormat", false, "Studio agent id"],
           ["query", "Query", "textFormat", false, "User prompt"],
           ["status", "Status", "textFormat", false, "ok / error / cancelled"],
-          ["toolCount", "Tool calls", "integerFormat", false, "Number of tool calls"],
+          [
+            "toolCount",
+            "Tool calls",
+            "integerFormat",
+            false,
+            "Number of tool calls",
+          ],
           ["createdAt", "Started", "textFormat", false, "Start time"],
           ["finishedAt", "Finished", "textFormat", false, "End time"],
         ]),

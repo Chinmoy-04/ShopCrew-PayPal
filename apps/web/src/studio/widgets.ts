@@ -1,4 +1,16 @@
-import type { AgDefaultRegistry, AgWidgetFormParams, AgWidgetsConfig } from "ag-studio";
+import { createElement, type ComponentType } from "react";
+import { readable } from "./widgets/InsightBars";
+import type { CustomCellRendererProps } from "ag-grid-react";
+import { studioWidget } from "./widgets/lifecycle";
+import { DailyMetric, LiveBrief } from "./widgets/DailySummary";
+import { ExplorerControls } from "./widgets/ExplorerControls";
+import { InsightGrid } from "./widgets/InsightGrid";
+import type {
+  AgWidgetField,
+  AgDefaultRegistry,
+  AgWidgetFormParams,
+  AgWidgetsConfig,
+} from "ag-studio";
 import { createWidgets } from "ag-studio-react";
 import type {
   BudgetBurnData,
@@ -58,14 +70,93 @@ const SHOPCREW_WIDGET_IDS = [
 /** ShopCrew custom widgets + default Studio menu. */
 export function buildShopCrewWidgets(
   defaults: AgWidgetsConfig<AgDefaultRegistry>,
+  decisionCell?: ComponentType<CustomCellRendererProps>,
 ): AgWidgetsConfig<ShopCrewRegistry> {
-  return createWidgets<ShopCrewRegistry>({
+  const config = createWidgets<ShopCrewRegistry>({
     additionalTypes: [
+      {
+        id: "explorer-controls",
+        label: "Decision explorer controls",
+        icon: stackIcon,
+        dataMapping: {},
+        form: (params) => params.createDefaults({ dataMappingItems: [] }),
+        comp: ExplorerControls,
+        defaultSize: { width: 900, height: 110 },
+        minSize: { width: 200, height: 90 },
+      },
+      {
+        id: "daily-metric",
+        label: "Daily metric",
+        icon: pulseIcon,
+        dataMapping: {
+          value: {
+            type: "field",
+            supportedRoles: ["numeric"],
+            requires: { cardinality: "one" },
+            required: true,
+          },
+        },
+        form: (params) => {
+          const form = params.createDefaults({
+            dataMappingItems: [{ key: "value", label: "Value" }],
+          });
+          form.items[1]?.items.push(
+            {
+              type: "textfield",
+              id: "format.style.action",
+              label: "Drill-down action",
+              defaultValue: "",
+            },
+            {
+              type: "textfield",
+              id: "format.style.note",
+              label: "Explanation",
+              defaultValue: "",
+            },
+          );
+          return form;
+        },
+        comp: studioWidget(DailyMetric),
+        defaultSize: { width: 240, height: 110 },
+        minSize: { width: 120, height: 90 },
+      },
+      {
+        id: "live-brief",
+        label: "Live brief",
+        icon: tickerIcon,
+        dataMapping: {
+          value: {
+            type: "field",
+            supportedRoles: ["category"],
+            requires: { cardinality: "one" },
+            required: true,
+          },
+        },
+        form: (params) =>
+          params.createDefaults({
+            dataMappingItems: [{ key: "value", label: "Brief text" }],
+          }),
+        comp: studioWidget(LiveBrief),
+        defaultSize: { width: 600, height: 90 },
+        minSize: { width: 200, height: 70 },
+      },
       {
         id: "pulse-meter",
         label: "Pulse meter",
         icon: pulseIcon,
         dataMapping: {
+          amount: {
+            type: "field",
+            supportedRoles: ["numeric"],
+            requires: { cardinality: "one" },
+            required: false,
+          },
+          budget: {
+            type: "field",
+            supportedRoles: ["numeric"],
+            requires: { cardinality: "one" },
+            required: false,
+          },
           value: {
             type: "field",
             supportedRoles: ["numeric"],
@@ -76,7 +167,11 @@ export function buildShopCrewWidgets(
         },
         form: (params: AgWidgetFormParams<PulseMeterData>) => {
           const form = params.createDefaults({
-            dataMappingItems: [{ key: "value", label: "Value" }],
+            dataMappingItems: [
+              { key: "value", label: "Value" },
+              { key: "amount", label: "Committed amount (optional)" },
+              { key: "budget", label: "Budget (optional)" },
+            ],
           });
           form.items[1]?.items.push(
             {
@@ -106,7 +201,7 @@ export function buildShopCrewWidgets(
           );
           return form;
         },
-        comp: PulseMeter,
+        comp: studioWidget(PulseMeter),
         defaultSize: { width: 280, height: 220 },
         minSize: { width: 160, height: 140 },
         ai: {
@@ -124,7 +219,8 @@ export function buildShopCrewWidgets(
             supportedRoles: ["category"],
             requires: { cardinality: "many" },
             required: true,
-            aiDescription: "Category field for each bar (e.g. decision status).",
+            aiDescription:
+              "Category field for each bar (e.g. decision status).",
           },
           value: {
             type: "field",
@@ -149,7 +245,7 @@ export function buildShopCrewWidgets(
           });
           return form;
         },
-        comp: StatusStack,
+        comp: studioWidget(StatusStack),
         defaultSize: { width: 360, height: 280 },
         minSize: { width: 200, height: 160 },
         ai: {
@@ -167,7 +263,8 @@ export function buildShopCrewWidgets(
             supportedRoles: ["category", "temporal"],
             requires: { cardinality: "many" },
             required: true,
-            aiDescription: "Day or date bucket for each bar (e.g. refunds.day).",
+            aiDescription:
+              "Day or date bucket for each bar (e.g. refunds.day).",
           },
           value: {
             type: "field",
@@ -181,7 +278,8 @@ export function buildShopCrewWidgets(
             supportedRoles: ["category"],
             requires: { cardinality: "many" },
             required: false,
-            aiDescription: "Optional agent or series split (e.g. refunds.agent).",
+            aiDescription:
+              "Optional agent or series split (e.g. refunds.agent).",
           },
         },
         form: (params: AgWidgetFormParams<RefundAnomalyStripData>) => {
@@ -200,7 +298,7 @@ export function buildShopCrewWidgets(
           });
           return form;
         },
-        comp: RefundAnomalyStrip,
+        comp: studioWidget(RefundAnomalyStrip),
         defaultSize: { width: 420, height: 220 },
         minSize: { width: 240, height: 160 },
         ai: {
@@ -235,7 +333,7 @@ export function buildShopCrewWidgets(
               { key: "value", label: "Amount" },
             ],
           }),
-        comp: PayoutPipeline,
+        comp: studioWidget(PayoutPipeline),
         defaultSize: { width: 360, height: 300 },
         minSize: { width: 220, height: 180 },
         ai: {
@@ -253,7 +351,8 @@ export function buildShopCrewWidgets(
             supportedRoles: ["category"],
             requires: { cardinality: "many" },
             required: true,
-            aiDescription: "Agent name (e.g. policies.agent or decisions.agent).",
+            aiDescription:
+              "Agent name (e.g. policies.agent or decisions.agent).",
           },
           value: {
             type: "field",
@@ -267,7 +366,8 @@ export function buildShopCrewWidgets(
             supportedRoles: ["numeric"],
             requires: { cardinality: "one" },
             required: true,
-            aiDescription: "Daily budget cap per agent (e.g. policies.dailyBudget).",
+            aiDescription:
+              "Daily budget cap per agent (e.g. policies.dailyBudget).",
           },
         },
         form: (params: AgWidgetFormParams<BudgetBurnData>) =>
@@ -278,11 +378,12 @@ export function buildShopCrewWidgets(
               { key: "target", label: "Budget" },
             ],
           }),
-        comp: BudgetBurn,
+        comp: studioWidget(BudgetBurn),
         defaultSize: { width: 360, height: 280 },
         minSize: { width: 220, height: 160 },
         ai: {
-          description: "Per-agent spend vs daily budget with warn/danger bands when burn is high.",
+          description:
+            "Per-agent spend vs daily budget with warn/danger bands when burn is high.",
         },
       },
       {
@@ -309,7 +410,8 @@ export function buildShopCrewWidgets(
             supportedRoles: ["numeric"],
             requires: { cardinality: "one" },
             required: true,
-            aiDescription: "Supplier lead time in days (inventory.leadTimeDays).",
+            aiDescription:
+              "Supplier lead time in days (inventory.leadTimeDays).",
           },
         },
         form: (params: AgWidgetFormParams<CoverHeatData>) =>
@@ -320,7 +422,7 @@ export function buildShopCrewWidgets(
               { key: "threshold", label: "Lead time" },
             ],
           }),
-        comp: CoverHeat,
+        comp: studioWidget(CoverHeat),
         defaultSize: { width: 400, height: 280 },
         minSize: { width: 240, height: 180 },
         ai: {
@@ -363,11 +465,12 @@ export function buildShopCrewWidgets(
           });
           return form;
         },
-        comp: NegotiationScoreboard,
+        comp: studioWidget(NegotiationScoreboard),
         defaultSize: { width: 360, height: 300 },
         minSize: { width: 220, height: 180 },
         ai: {
-          description: "Ranked supplier negotiation scoreboard — savings per supplier against list price.",
+          description:
+            "Ranked supplier negotiation scoreboard — savings per supplier against list price.",
         },
       },
       {
@@ -397,7 +500,7 @@ export function buildShopCrewWidgets(
           });
           return form;
         },
-        comp: DecisionTicker,
+        comp: studioWidget(DecisionTicker),
         defaultSize: { width: 400, height: 320 },
         minSize: { width: 260, height: 200 },
         ai: {
@@ -414,4 +517,26 @@ export function buildShopCrewWidgets(
       },
     ],
   });
+  const StatusCell = (params: CustomCellRendererProps) =>
+    createElement("span", null, readable(String(params.value ?? "")));
+  return {
+    ...config,
+    widgets: config.widgets.map((widget) =>
+      widget.id === "grid"
+        ? {
+            ...widget,
+            comp: InsightGrid,
+            options: {
+              ...(widget.options as object),
+              createCellRenderer: (field: AgWidgetField) =>
+                field.fieldId === "decisions.id"
+                  ? decisionCell
+                  : String(field.fieldId).endsWith(".status")
+                    ? StatusCell
+                    : undefined,
+            },
+          }
+        : widget,
+    ),
+  } as AgWidgetsConfig<ShopCrewRegistry>;
 }

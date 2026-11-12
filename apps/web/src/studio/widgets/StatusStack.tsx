@@ -1,3 +1,4 @@
+import { InsightBars, readable, statusColor } from "./InsightBars";
 import type { AgWidgetParams } from "ag-studio";
 import type { StatusStackData } from "../registry";
 import { readNumber, readString, useWidgetRows } from "./useWidgetRows";
@@ -32,29 +33,30 @@ export function StatusStack(params: AgWidgetParams<StatusStackData>) {
 
   if (!rows?.length) return null;
 
-  const max = Math.max(...rows.map((r) => r.value), 1);
-
+  const selections = params.widgetApi.getCrossFilterSelections() ?? [];
+  const selected = selections.flatMap((selection) =>
+    selection.type === "value"
+      ? selection.values.map(String).map(readable)
+      : [],
+  );
   return (
-    <div className="sc-stack">
-      {params.format?.title?.enabled !== false && params.format?.title?.text && (
-        <div className="sc-stack__title">{params.format.title.text}</div>
-      )}
-      <ul className="sc-stack__list">
-        {rows.map((row, i) => (
-          <li key={row.label} className="sc-stack__row">
-            <div className="sc-stack__meta">
-              <span>{row.label}</span>
-              <strong>{row.value}</strong>
-            </div>
-            <div className="sc-stack__track" style={{ height: barHeight }}>
-              <div
-                className={`sc-stack__fill sc-stack__fill--${i % 6}`}
-                style={{ width: `${(row.value / max) * 100}%` }}
-              />
-            </div>
-          </li>
-        ))}
-      </ul>
-    </div>
+    <InsightBars
+      unit="decisions"
+      barHeight={barHeight}
+      rows={rows.map((row) => ({
+        label: readable(row.label),
+        value: row.value,
+        color: statusColor(row.label),
+      }))}
+      selected={selected}
+      onSelect={(index) =>
+        params.widgetApi.toggleCrossFilter({
+          type: "value",
+          field: category!,
+          value: rows[index].label,
+          group: 0,
+        })
+      }
+    />
   );
 }

@@ -1,47 +1,88 @@
 import type { AgWidgetParams } from "ag-studio";
+import { RingChart } from "@/components/charts/ring-chart";
+import { Ring } from "@/components/charts/ring";
+import { RingCenter } from "@/components/charts/ring-center";
+import { chartCssVars } from "@/components/charts/chart-context";
 import type { PulseMeterData } from "../registry";
 import { readNumber, useWidgetRows } from "./useWidgetRows";
+import { usd } from "./InsightBars";
 
-/** ShopCrew pulse meter — single KPI with warn/danger colour bands. */
 export function PulseMeter(params: AgWidgetParams<PulseMeterData>) {
   const style = params.format?.style ?? {};
-  const warnAt = style.warnAt ?? 0.7;
-  const dangerAt = style.dangerAt ?? 0.9;
-  const fontSize = style.valueFontSize ?? 36;
-  const unit = style.unit ?? "";
-
-  const value = useWidgetRows<number>(
+  const value = params.dataMapping.value?.[0],
+    amount = params.dataMapping.amount?.[0],
+    budget = params.dataMapping.budget?.[0];
+  const result = useWidgetRows(
     params.widgetApi,
     {
-      fields: [params.dataMapping.value?.[0]],
-      ready: !!params.dataMapping.value?.[0],
-      select: (raw, keys) => readNumber(raw[0], keys[0]),
+      fields: [value, amount, budget],
+      ready: !!value,
+      select: (rows, keys) => ({
+        ratio: readNumber(rows[0], keys[0]),
+        amount: amount ? readNumber(rows[0], keys[1]) : undefined,
+        budget: budget ? readNumber(rows[0], keys[2]) : undefined,
+      }),
     },
-    [params.dataMapping.value],
+    [value, amount, budget],
   );
-
-  if (value == null) return null;
-
-  const tone = value >= dangerAt ? "danger" : value >= warnAt ? "warn" : "ok";
-  const display =
-    Math.abs(value) <= 1 && unit === "%"
-      ? `${Math.round(value * 100)}${unit}`
-      : unit === "%"
-        ? `${Math.round(value)}${unit}`
-        : `${Number.isInteger(value) ? value : value.toFixed(2)}${unit}`;
-
-  const pct = Math.max(0, Math.min(1, Math.abs(value) <= 1 ? value : value / 100));
-
-  return (
-    <div className={`sc-pulse sc-pulse--${tone}`}>
-      {params.format?.title?.enabled !== false && params.format?.title?.text && (
-        <div className="sc-pulse__title">{params.format.title.text}</div>
-      )}
-      <div className="sc-pulse__ring" style={{ ["--pulse" as string]: String(pct) }}>
-        <span className="sc-pulse__value" style={{ fontSize }}>
-          {display}
-        </span>
+  if (!result) return null;
+  if (result.budget !== undefined && result.budget <= 0)
+    return (
+      <div className="insight-budget-empty">
+        No configured budget
+        {result.amount ? <p>{usd(result.amount)} committed today</p> : null}
       </div>
+    );
+  const ratio =
+    style.unit === "%" && Math.abs(result.ratio) > 1 && !budget
+      ? result.ratio / 100
+      : result.ratio;
+  const color =
+    ratio >= (style.dangerAt ?? 0.85)
+      ? "var(--chart-4)"
+      : ratio >= (style.warnAt ?? 0.6)
+        ? "var(--chart-3)"
+        : chartCssVars.linePrimary;
+  const display =
+    style.unit === "%" ? `${Math.round(ratio * 100)}%` : String(result.ratio);
+  return (
+    <div
+      className="insight-budget"
+      aria-label={`${display} of configured budget`}
+    >
+      <div className="insight-budget-ring">
+        <RingChart
+          data={[
+            {
+              label: "Budget utilization",
+              value: Math.max(0, Math.min(1, ratio)),
+              maxValue: 1,
+              color,
+            },
+          ]}
+          strokeWidth={12}
+          animationDuration={0}
+        >
+          <Ring index={0} animate={false} showGlow={false} />
+          <RingCenter>
+            {() => (
+              <strong style={{ fontSize: style.valueFontSize ?? 32 }}>
+                {display}
+              </strong>
+            )}
+          </RingCenter>
+        </RingChart>
+      </div>
+      {result.amount !== undefined && result.budget !== undefined && (
+        <div className="insight-budget-caption">
+          <strong>{usd(result.amount)}</strong> / {usd(result.budget)}
+          <span>
+            {result.amount > result.budget
+              ? `${usd(result.amount - result.budget)} over budget`
+              : `${usd(result.budget - result.amount)} remaining`}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

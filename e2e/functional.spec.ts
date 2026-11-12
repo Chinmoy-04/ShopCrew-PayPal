@@ -128,10 +128,11 @@ test('INSIGHTS-01 modes and layout reset', async ({ page }) => {
   await page.goto('/insights');
   await expect(page.getByRole('heading', { name: 'Insights', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Edit report', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Edit report', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('button', { name: 'View', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'View', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('button', { name: 'Reset layout', exact: true }).click();
+  await page.getByRole('button', { name: 'Done editing', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Edit report', exact: true })).toBeVisible();
+  await page.getByLabel('Report options').click();
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: 'Reset report', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Insights', exact: true })).toBeVisible();
 });
 

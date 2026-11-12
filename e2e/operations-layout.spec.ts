@@ -48,7 +48,8 @@ test('WORKSPACE sidebar separates operations from the storefront and preserves d
   await expect(page.getByRole('heading', { name: 'Insights', exact: true })).toBeVisible();
   await expect(sidebar.getByRole('link', { name: 'Insights', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.locator('.studio-frame')).toBeVisible();
-  await expect(page.locator('.sc-stack')).toBeVisible();
+  // A new simulation day can have no decision bars; the daily summary still renders.
+  await expect(page.locator('.insight-metric').first()).toBeVisible();
   if (!desktop) {
     await expect(page.locator('.studio-frame').getByRole('button', { name: 'Filters', exact: true })).toHaveAttribute('aria-expanded', 'false');
   }

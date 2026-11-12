@@ -1,72 +1,70 @@
 import type { AgWidgetParams } from "ag-studio";
+import { refundAnomalies } from "@shopcrew/shared";
 import type { RefundAnomalyStripData } from "../registry";
-import { readNumber, readString, useWidgetRows } from "./useWidgetRows";
+import { readNumber, useWidgetRows } from "./useWidgetRows";
+import { InsightBars } from "./InsightBars";
 
-type DayPoint = { label: string; value: number; series?: string; anomaly: boolean };
-
-function sigmaFlags(values: number[], sigma: number): boolean[] {
-  if (values.length < 2) return values.map(() => false);
-  const mean = values.reduce((a, b) => a + b, 0) / values.length;
-  const variance = values.reduce((a, v) => a + (v - mean) ** 2, 0) / values.length;
-  const std = Math.sqrt(variance) || 1;
-  const cutoff = mean + sigma * std;
-  return values.map((v) => v > cutoff);
-}
-
-/** Daily refund totals with days above N-sigma highlighted. */
-export function RefundAnomalyStrip(params: AgWidgetParams<RefundAnomalyStripData>) {
+export function RefundAnomalyStrip(
+  params: AgWidgetParams<RefundAnomalyStripData>,
+) {
+  const category = params.dataMapping.category?.[0],
+    value = params.dataMapping.value?.[0];
   const sigma = params.format?.style?.sigma ?? 2;
-  const category = params.dataMapping.category?.[0];
-  const value = params.dataMapping.value?.[0];
-  const series = params.dataMapping.series?.[0];
-
-  const points = useWidgetRows<DayPoint[]>(
+  const result = useWidgetRows(
     params.widgetApi,
     {
-      fields: [category, value, series],
-      sort: params.sort,
+      fields: [category, value],
       ready: !!(category && value),
-      select: (raw, keys) => {
-        const [catKey, valKey, seriesKey] = keys;
-        const mapped = raw.map((row) => ({
-          label: readString(row, catKey),
-          value: readNumber(row, valKey),
-          series: seriesKey ? readString(row, seriesKey) : undefined,
-        }));
-        const flags = sigmaFlags(
-          mapped.map((p) => p.value),
+      select: (rows, keys) =>
+        refundAnomalies(
+          rows.map((row) => ({
+            day: readNumber(row, keys[0]),
+            amount: readNumber(row, keys[1]),
+          })),
           sigma,
-        );
-        return mapped.map((p, i) => ({ ...p, anomaly: flags[i] }));
-      },
+        ),
     },
-    [params.dataMapping.category, params.dataMapping.value, params.dataMapping.series, params.sort, sigma],
+    [category, value, sigma],
   );
-
-  if (!points?.length) return null;
-
-  const max = Math.max(...points.map((p) => p.value), 1);
-
+  if (!result) return null;
+  const peak = result.series.reduce(
+    (best, point) => (point.amount > best.amount ? point : best),
+    result.series[0],
+  );
   return (
-    <div className="sc-anomaly">
-      {params.format?.title?.enabled !== false && params.format?.title?.text && (
-        <div className="sc-anomaly__title">{params.format.title.text}</div>
+    <div className="insight-refunds">
+      {peak && (
+        <div className="insight-refund-peak">
+          <strong>
+            Peak:{" "}
+            {new Intl.NumberFormat("en-US", {
+              style: "currency",
+              currency: "USD",
+            }).format(peak.amount)}
+          </strong>
+          <span>
+            Day {peak.day}
+            {result.spike ? " · Unusual" : ""}
+          </span>
+        </div>
       )}
-      <ul className="sc-anomaly__strip">
-        {points.map((point) => (
-          <li
-            key={`${point.label}-${point.series ?? ""}`}
-            className={`sc-anomaly__day${point.anomaly ? " sc-anomaly__day--hot" : ""}`}
-            title={point.series ? `${point.series}: $${point.value.toFixed(0)}` : undefined}
-          >
-            <span className="sc-anomaly__label">{point.label}</span>
-            <div className="sc-anomaly__bar">
-              <div className="sc-anomaly__fill" style={{ height: `${(point.value / max) * 100}%` }} />
-            </div>
-            <span className="sc-anomaly__val">${point.value.toFixed(0)}</span>
-          </li>
-        ))}
-      </ul>
+      <InsightBars
+        unit="USD"
+        orientation="vertical"
+        actualLabel="Refunds"
+        rows={result.series.map((point) => ({
+          label: `Day ${point.day}`,
+          value: point.amount,
+          color:
+            point.z >= sigma && result.series.length >= 3
+              ? "var(--chart-4)"
+              : "var(--chart-1)",
+        }))}
+      />
+      <p className="insight-chart-caption">
+        Available-history baseline · {sigma} standard deviations ·{" "}
+        {result.series.length} observed days
+      </p>
     </div>
   );
 }

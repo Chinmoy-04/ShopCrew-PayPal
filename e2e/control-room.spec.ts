@@ -117,14 +117,15 @@ test('INSIGHTS duplicate persists through reload and live refresh; reset restore
    await page.evaluate(()=>window.scrollTo(0,0));
  }
  const before=Object.keys(shopCrewReport.pages[0].widgets).length;
- const count=()=>page.evaluate(key=>Object.keys(JSON.parse(localStorage.getItem(key)||'{"pages":[{"widgets":{}}]}').pages[0].widgets).length,STUDIO_STATE_KEY);
+ const count=()=>page.evaluate(key=>Object.keys(JSON.parse(localStorage.getItem(key)||'{"report":{"pages":[{"widgets":{}}]}}').report.pages[0].widgets).length,STUDIO_STATE_KEY);
  await page.locator('.ag-studio-layout-widget').filter({has:page.getByText('Live brief',{exact:true})}).first().hover({position:{x:80,y:30}});
  await page.locator('[aria-label="widgetToolbarDuplicate"]').first().click();await expect.poll(count).toBe(before+1);
  await page.reload();await page.getByRole('button',{name:'Edit report',exact:true}).click();await expect.poll(count).toBe(before+1);
  const refreshed=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/insights'&&response.ok());
  await request.post('/api/sim/pause',{data:{paused:false}});await refreshed;await expect.poll(count).toBe(before+1);
- await page.getByRole('button',{name:'Reset layout',exact:true}).click();await expect(page.locator('.studio-frame')).toBeVisible();
- await expect.poll(async()=>page.evaluate(key=>localStorage.getItem(key),STUDIO_STATE_KEY)).toBeNull();
+ await page.getByLabel('Report options').click();page.once('dialog',dialog=>dialog.accept());
+ await page.getByRole('button',{name:'Reset report',exact:true}).click();await expect(page.locator('.studio-frame')).toBeVisible();
+ await expect.poll(count).toBe(before);
 });
 
 test('GRID numeric sorting and filters survive reload',async({page})=>{

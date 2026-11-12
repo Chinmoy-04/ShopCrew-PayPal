@@ -1,7 +1,16 @@
-import type { AgPageState, AgReportState, AgWidgetLayoutState } from "ag-studio";
+import type {
+  AgPageState,
+  AgReportState,
+  AgWidgetLayoutState,
+} from "ag-studio";
 import type { ShopCrewRegistry } from "./registry";
 
-const at = (xTrack: number, yTrack: number, xSpan: number, ySpan: number): AgWidgetLayoutState => ({
+const at = (
+  xTrack: number,
+  yTrack: number,
+  xSpan: number,
+  ySpan: number,
+): AgWidgetLayoutState => ({
   xTrack,
   yTrack,
   xSpan,
@@ -13,14 +22,20 @@ const sum = (id: string) => ({ id, aggregation: "sum" as const });
 const countd = (id: string) => ({ id, aggregation: "countd" as const });
 
 const FONT = "Outfit, sans-serif";
-const typography = (fontSize: number, fontWeight: "normal" | "bold" = "normal") => ({
+const typography = (
+  fontSize: number,
+  fontWeight: "normal" | "bold" = "normal",
+) => ({
   fontFamily: FONT,
   fontSize,
   fontWeight,
   fontStyle: "normal" as const,
 });
 
-const kpi = (text: string, value: { id: string; aggregation?: "sum" | "avg" | "countd" }) => ({
+const kpi = (
+  text: string,
+  value: { id: string; aggregation?: "sum" | "avg" | "countd" },
+) => ({
   type: "value" as const,
   dataMapping: { value: [value] },
   format: {
@@ -34,18 +49,46 @@ const operations: AgPageState<ShopCrewRegistry> = {
   id: "operations",
   widgets: {
     brief: {
-      type: "value",
+      type: "live-brief",
       dataMapping: { value: [{ id: "snapshot.brief" }] },
+      format: { ...title("Live brief"), crossFilter: "none" },
+    },
+    "kpi-pending": {
+      type: "daily-metric",
+      dataMapping: { value: [sum("snapshot.pendingAll")] },
       format: {
-        title: { enabled: true, text: "Live brief", typography: typography(13, "bold") },
-        caption: { enabled: false, text: "", typography: typography(0) },
-        style: { typography: typography(14) },
+        ...title("Needs review"),
+        crossFilter: "none",
+        style: { action: "pending" },
       },
     },
-    "kpi-pending": kpi("Pending approvals", sum("snapshot.pending")),
-    "kpi-auto": kpi("Auto-approved", sum("snapshot.autoApproved")),
-    "kpi-spend": kpi("Spend today", sum("snapshot.spendToday")),
-    "kpi-hours": kpi("Hours saved", sum("snapshot.hoursSaved")),
+    "kpi-auto": {
+      type: "daily-metric",
+      dataMapping: { value: [sum("snapshot.policyApprovedToday")] },
+      format: {
+        ...title("Auto-approved today"),
+        crossFilter: "none",
+        style: { action: "auto", note: "Approved by policy" },
+      },
+    },
+    "kpi-spend": {
+      type: "daily-metric",
+      dataMapping: { value: [sum("snapshot.committedToday")] },
+      format: {
+        ...title("Committed today"),
+        crossFilter: "none",
+        style: { action: "committed", note: "Refunds and payouts committed" },
+      },
+    },
+    "kpi-hours": {
+      type: "daily-metric",
+      dataMapping: { value: [sum("snapshot.estimatedHours")] },
+      format: {
+        ...title("Estimated time saved today"),
+        crossFilter: "none",
+        style: { action: "today", note: "Hours · 0.15 per decision" },
+      },
+    },
     "status-stack": {
       type: "status-stack",
       dataMapping: {
@@ -53,27 +96,21 @@ const operations: AgPageState<ShopCrewRegistry> = {
         value: [countd("decisions.id")],
       },
       format: {
-        ...title("Decision status mix"),
+        ...title("Decision status · selected scope"),
         style: { barHeight: 18 },
       },
     },
     "budget-pulse": {
       type: "pulse-meter",
-      dataMapping: { value: [{ id: "snapshot.budgetUsedPct" }] },
-      format: {
-        ...title("Budget pulse"),
-        style: { warnAt: 0.6, dangerAt: 0.85, valueFontSize: 40, unit: "%" },
-      },
-    },
-    "status-donut": {
-      type: "donut-chart",
       dataMapping: {
-        categoryKey: [{ id: "decisions.status" }],
-        valueKey: [countd("decisions.id")],
+        value: [{ id: "snapshot.budgetCommittedPct" }],
+        amount: [{ id: "snapshot.committedToday" }],
+        budget: [{ id: "snapshot.dailyBudget" }],
       },
       format: {
-        ...title("Decisions by status"),
-        style: { custom: { pieDataLabel: { enabled: true }, totalLabel: { enabled: true } } },
+        ...title("Budget utilization today"),
+        crossFilter: "none",
+        style: { warnAt: 0.6, dangerAt: 0.85, valueFontSize: 40, unit: "%" },
       },
     },
     "agent-spend": {
@@ -88,44 +125,43 @@ const operations: AgPageState<ShopCrewRegistry> = {
         style: { theme: { common: { legend: { enabled: true } } } },
       },
     },
-    "money-filter": {
-      type: "button-filter",
-      dataMapping: { value: [{ id: "decisions.movesMoney" }] },
-      format: {
-        ...title("Moves money?"),
-        style: { selection: { type: "multiple" }, dimensions: { height: 28, minWidth: 48 } },
-      },
-    },
     "decision-grid": {
       type: "grid",
       dataMapping: {
         cols: [
+          { id: "decisions.id" },
           { id: "decisions.day" },
           { id: "decisions.agent" },
           { id: "decisions.type" },
           { id: "decisions.status" },
           { id: "decisions.summary" },
-          sum("decisions.amount"),
+          { id: "decisions.amount" },
           { id: "decisions.movesMoney" },
         ],
       },
       sort: [{ field: { id: "decisions.day" }, direction: "desc" }],
       format: title("All agent decisions"),
     },
+    "explorer-controls": {
+      type: "explorer-controls",
+      dataMapping: {},
+      format: {
+        title: { enabled: false, text: "Decision explorer" },
+        crossFilter: "none",
+      },
+    },
   },
   widgetLayout: {
-    brief: at(0, 0, 24, 3),
-    "kpi-pending": at(0, 3, 6, 5),
-    "kpi-auto": at(6, 3, 6, 5),
-    "kpi-spend": at(12, 3, 6, 5),
-    "kpi-hours": at(18, 3, 6, 5),
-    // Custom React widgets — full-width row under KPIs so they are hard to miss
-    "status-stack": at(0, 8, 16, 14),
-    "budget-pulse": at(16, 8, 8, 14),
-    "status-donut": at(0, 22, 8, 14),
-    "agent-spend": at(8, 22, 12, 14),
-    "money-filter": at(20, 22, 4, 14),
-    "decision-grid": at(0, 36, 24, 20),
+    brief: at(0, 0, 24, 5),
+    "kpi-pending": at(0, 5, 6, 7),
+    "kpi-auto": at(6, 5, 6, 7),
+    "kpi-spend": at(12, 5, 6, 7),
+    "kpi-hours": at(18, 5, 6, 7),
+    "status-stack": at(0, 12, 16, 14),
+    "budget-pulse": at(16, 12, 8, 14),
+    "explorer-controls": at(0, 26, 24, 6),
+    "agent-spend": at(0, 32, 24, 11),
+    "decision-grid": at(0, 43, 24, 21),
   },
 };
 
@@ -144,7 +180,12 @@ const money: AgPageState<ShopCrewRegistry> = {
       },
       format: {
         ...title("Order revenue by source"),
-        style: { custom: { pieDataLabel: { enabled: true }, totalLabel: { enabled: true } } },
+        style: {
+          custom: {
+            pieDataLabel: { enabled: true },
+            totalLabel: { enabled: true },
+          },
+        },
       },
     },
     "orders-by-day": {
@@ -179,7 +220,11 @@ const money: AgPageState<ShopCrewRegistry> = {
         style: {
           scaleLabel: { min: 0, max: 1 },
           label: { typography: typography(22, "bold") },
-          secondaryLabel: { enabled: true, text: "of daily agent budget", typography: typography(12) },
+          secondaryLabel: {
+            enabled: true,
+            text: "of daily agent budget",
+            typography: typography(12),
+          },
         },
       },
     },
@@ -202,9 +247,9 @@ const money: AgPageState<ShopCrewRegistry> = {
     "budget-burn": {
       type: "budget-burn",
       dataMapping: {
-        category: [{ id: "budget_burn.agent" }],
-        value: [sum("budget_burn.spent")],
-        target: [sum("budget_burn.dailyBudget")],
+        category: [{ id: "daily_budget_burn.agent" }],
+        value: [sum("daily_budget_burn.spent")],
+        target: [sum("daily_budget_burn.dailyBudget")],
       },
       format: title("Per-agent budget burn"),
     },
@@ -237,7 +282,12 @@ const stock: AgPageState<ShopCrewRegistry> = {
       },
       format: {
         ...title("Needs reorder?"),
-        style: { custom: { pieDataLabel: { enabled: true }, totalLabel: { enabled: true } } },
+        style: {
+          custom: {
+            pieDataLabel: { enabled: true },
+            totalLabel: { enabled: true },
+          },
+        },
       },
     },
     "stock-bars": {
@@ -363,7 +413,8 @@ const liveAgents: AgPageState<ShopCrewRegistry> = {
 
 export const shopCrewReport: AgReportState<ShopCrewRegistry> = {
   selectedPageId: operations.id,
+  panels: { filters: { collapsed: true } },
   pages: [operations, money, stock, liveAgents],
 };
 
-export const STUDIO_STATE_KEY = "shopcrew-studio-report-v5";
+export { REPORT_KEY as STUDIO_STATE_KEY } from "./report-state";

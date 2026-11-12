@@ -1,3 +1,4 @@
+import { InsightBars } from "./InsightBars";
 import type { AgWidgetParams } from "ag-studio";
 import type { NegotiationScoreboardData } from "../registry";
 import { readNumber, readString, useWidgetRows } from "./useWidgetRows";
@@ -5,7 +6,9 @@ import { readNumber, readString, useWidgetRows } from "./useWidgetRows";
 type ScoreRow = { supplier: string; saving: number };
 
 /** Ranked supplier savings from negotiations. */
-export function NegotiationScoreboard(params: AgWidgetParams<NegotiationScoreboardData>) {
+export function NegotiationScoreboard(
+  params: AgWidgetParams<NegotiationScoreboardData>,
+) {
   const category = params.dataMapping.category?.[0];
   const value = params.dataMapping.value?.[0];
   const maxRows = params.format?.style?.maxRows ?? 8;
@@ -28,34 +31,20 @@ export function NegotiationScoreboard(params: AgWidgetParams<NegotiationScoreboa
           .slice(0, maxRows);
       },
     },
-    [params.dataMapping.category, params.dataMapping.value, params.sort, maxRows],
+    [
+      params.dataMapping.category,
+      params.dataMapping.value,
+      params.sort,
+      maxRows,
+    ],
   );
 
   if (!rows?.length) return null;
 
-  const top = rows[0]?.saving ?? 1;
-
   return (
-    <div className="sc-nego">
-      {params.format?.title?.enabled !== false && params.format?.title?.text && (
-        <div className="sc-nego__title">{params.format.title.text}</div>
-      )}
-      <ol className="sc-nego__board">
-        {rows.map((row, i) => (
-          <li key={row.supplier} className="sc-nego__row">
-            <span className="sc-nego__rank">{i + 1}</span>
-            <div className="sc-nego__body">
-              <div className="sc-nego__meta">
-                <span>{row.supplier}</span>
-                <strong>${row.saving.toFixed(0)}</strong>
-              </div>
-              <div className="sc-nego__track">
-                <div className="sc-nego__fill" style={{ width: `${(row.saving / top) * 100}%` }} />
-              </div>
-            </div>
-          </li>
-        ))}
-      </ol>
-    </div>
+    <InsightBars
+      rows={rows.map((row) => ({ label: row.supplier, value: row.saving }))}
+      unit="USD"
+    />
   );
 }
