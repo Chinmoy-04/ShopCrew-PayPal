@@ -4,6 +4,7 @@ import { AgGridReact } from "ag-grid-react";
 import { api, type Kpis, type Policy } from "../../api/client";
 import { onLive } from "../../hooks/useLiveEvents";
 import { gridTheme } from "../theme";
+import { agentLabel } from "../../lib/agent-label";
 
 function EnabledToggle(props: ICellRendererParams<Policy, boolean>) {
   const row = props.data;
@@ -46,7 +47,7 @@ export function PoliciesGrid({ onGrid }: { onGrid?: (api: import("ag-grid-commun
   const [saveError, setSaveError] = useState("");
 
   const columnDefs: ColDef<Policy>[] = [
-    { field: "agent", minWidth: 120 },
+    { field: "agent", minWidth: 160, valueFormatter: (p) => agentLabel(p.value) },
     { field: "enabled", headerName: "Status", cellRenderer: EnabledToggle, editable: false, width: 110 },
     {
       field: "autoApproveMax",

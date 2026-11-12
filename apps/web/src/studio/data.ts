@@ -1,4 +1,5 @@
 import { dailyInsights } from "@shopcrew/shared";
+import { agentLabel, agentSummary } from "../lib/agent-label";
 import type {
   AgDataSourcesDefinition,
   AgFieldDefinition,
@@ -26,6 +27,8 @@ function fields(specs: FieldSpec[]): AgFieldDefinition[] {
     id,
     name,
     format,
+    ...(id === "agent" ? { createValueFormatter: () => agentLabel } : {}),
+    ...(id === "brief" ? { createValueFormatter: () => agentSummary } : {}),
     ...(format === "currencyFormat"
       ? {
           formatOptions: {
@@ -280,7 +283,7 @@ export function buildStudioData(
         id: "decisions",
         name: "Agent decisions",
         description:
-          "Every proposal the CS, inventory, pricing, and supplier agents made. Includes seeded simulated history.",
+          "Every proposal the customer service, inventory, pricing, and supplier agents made. Includes seeded simulated history.",
         data: decisions,
         fields: fields([
           ["id", "Decision ID", "textFormat", true, "Unique proposal id"],
@@ -571,7 +574,7 @@ export function buildStudioData(
             false,
             "toolkit, rest, dry, dry_exhausted",
           ],
-          ["agent", "Agent", "textFormat", false, "Usually cs"],
+          ["agent", "Agent", "textFormat", false, "Usually customer service"],
           ["proposalId", "Proposal", "textFormat", true, "Linked proposal"],
         ]),
       },

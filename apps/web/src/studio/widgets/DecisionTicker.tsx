@@ -1,4 +1,5 @@
 import type { AgWidgetParams } from "ag-studio";
+import { agentLabel } from "../../lib/agent-label";
 import type { DecisionTickerData } from "../registry";
 import { readNumber, readString, useWidgetRows } from "./useWidgetRows";
 
@@ -57,7 +58,7 @@ export function DecisionTicker(params: AgWidgetParams<DecisionTickerData>) {
             </span>
             <p className="sc-ticker__summary">{row.summary}</p>
             <div className="sc-ticker__foot">
-              <span>{row.agent}</span>
+              <span>{agentLabel(row.agent)}</span>
               {row.amount > 0 && <strong>${row.amount.toFixed(2)}</strong>}
             </div>
           </li>

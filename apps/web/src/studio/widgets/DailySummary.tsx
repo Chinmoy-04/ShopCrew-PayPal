@@ -2,6 +2,7 @@ import type { AgWidgetParams } from "ag-studio";
 import type { DailyMetricData, LiveBriefData } from "../registry";
 import { useWidgetRows, readString } from "./useWidgetRows";
 import { usd } from "./InsightBars";
+import { agentSummary } from "../../lib/agent-label";
 export function DailyMetric(params: AgWidgetParams<DailyMetricData>) {
   const field = params.dataMapping.value?.[0];
   const value = useWidgetRows(
@@ -44,5 +45,5 @@ export function LiveBrief(params: AgWidgetParams<LiveBriefData>) {
     },
     [field],
   );
-  return value ? <p className="insight-live-brief">{value}</p> : null;
+  return value ? <p className="insight-live-brief">{agentSummary(value)}</p> : null;
 }

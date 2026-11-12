@@ -1,4 +1,5 @@
 import { InsightBars } from "./InsightBars";
+import { agentLabel } from "../../lib/agent-label";
 import type { AgWidgetParams } from "ag-studio";
 import type { BudgetBurnData } from "../registry";
 import { readNumber, readString, useWidgetRows } from "./useWidgetRows";
@@ -46,7 +47,7 @@ export function BudgetBurn(params: AgWidgetParams<BudgetBurnData>) {
     <div className="insight-budget-bars">
       <InsightBars
         rows={rows.map((row) => ({
-          label: row.agent,
+          label: agentLabel(row.agent),
           value: row.spend,
           target: row.budget,
         }))}

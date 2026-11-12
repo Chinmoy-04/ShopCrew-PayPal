@@ -33,15 +33,20 @@ async function reconcile() {
         items?: { payout_item_id?: string; transaction_status?: string }[];
       };
       const item = remote.items?.[0];
-      if (!item?.transaction_status || item.transaction_status === "PENDING") continue;
-      const type =
-        item.transaction_status === "UNCLAIMED"
-          ? "PAYMENT.PAYOUTS-ITEM.UNCLAIMED"
-          : item.transaction_status === "SUCCESS"
-            ? "PAYMENT.PAYOUTS-ITEM.SUCCEEDED"
-            : "PAYMENT.PAYOUTS-ITEM.FAILED";
+      if (!item?.payout_item_id || !item.transaction_status) continue;
+      const types: Record<string, string> = {
+        UNCLAIMED: "PAYMENT.PAYOUTS-ITEM.UNCLAIMED",
+        SUCCESS: "PAYMENT.PAYOUTS-ITEM.SUCCEEDED",
+        FAILED: "PAYMENT.PAYOUTS-ITEM.FAILED",
+        BLOCKED: "PAYMENT.PAYOUTS-ITEM.FAILED",
+        DENIED: "PAYMENT.PAYOUTS-ITEM.DENIED",
+        RETURNED: "PAYMENT.PAYOUTS-ITEM.RETURNED",
+        CANCELED: "PAYMENT.PAYOUTS-ITEM.CANCELED",
+      };
+      const type = types[item.transaction_status];
+      if (!type) continue;
       await applyPayPalEvent(
-        { id: `reconcile-${item.payout_item_id}`, event_type: type, resource: { payout_item_id: item.payout_item_id, payout_batch_id: payout.payoutBatchId } },
+        { id: `reconcile-${item.payout_item_id}-${item.transaction_status}`, event_type: type, resource: { payout_item_id: item.payout_item_id, payout_batch_id: payout.payoutBatchId } },
         true,
       );
     }

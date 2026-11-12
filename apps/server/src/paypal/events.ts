@@ -1,8 +1,8 @@
-import { eq } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { bus } from "../bus/events.js";
 import { nowIso, writeAudit } from "../db/audit.js";
 import { db } from "../db/client.js";
-import { orders, payouts, proposals, purchaseOrders, refunds, webhookEvents } from "../db/schema.js";
+import { orders, payouts, products, proposals, purchaseOrders, refunds, webhookEvents } from "../db/schema.js";
 import { listOrderViews, proposalView } from "../db/views.js";
 
 export async function applyPayPalEvent(event: {
@@ -37,7 +37,6 @@ export async function applyPayPalEvent(event: {
   }
 
   const resource = event.resource ?? {};
-  const resourceId = String(resource.id ?? resource.payout_item_id ?? resource.payout_batch_id ?? "");
   let affectedOrderId: string | null = null;
 
   if (event.event_type === "PAYMENT.CAPTURE.COMPLETED" || event.event_type === "CHECKOUT.ORDER.APPROVED") {
@@ -90,29 +89,51 @@ export async function applyPayPalEvent(event: {
   }
 
   if (event.event_type.startsWith("PAYMENT.PAYOUTS-ITEM") || event.event_type.startsWith("PAYMENT.PAYOUTSBATCH")) {
+    // A batch or an item still processing does not prove that a supplier was paid.
+    const itemStatuses: Record<string, string> = {
+      "PAYMENT.PAYOUTS-ITEM.SUCCEEDED": "SUCCESS",
+      "PAYMENT.PAYOUTS-ITEM.UNCLAIMED": "UNCLAIMED",
+      "PAYMENT.PAYOUTS-ITEM.CANCELED": "CANCELED",
+      "PAYMENT.PAYOUTS-ITEM.CANCELLED": "CANCELED",
+      "PAYMENT.PAYOUTS-ITEM.FAILED": "FAILED",
+      "PAYMENT.PAYOUTS-ITEM.DENIED": "FAILED",
+      "PAYMENT.PAYOUTS-ITEM.RETURNED": "FAILED",
+    };
+    const status = itemStatuses[event.event_type];
+    if (!status) {
+      await database.update(webhookEvents).set({ processedAt: nowIso() }).where(eq(webhookEvents.paypalEventId, event.id));
+      return;
+    }
     const itemId = String(resource.payout_item_id ?? resource.id ?? "");
     const batchId = String(resource.payout_batch_id ?? "");
     const rows = await database.select().from(payouts);
-    const payout = rows.find((item) => item.payoutItemId === itemId || item.payoutBatchId === batchId || item.payoutItemId === resourceId);
+    const payout = rows.find((item) => Boolean(itemId && item.payoutItemId === itemId))
+      ?? rows.find((item) => Boolean(batchId && item.payoutBatchId === batchId && !item.payoutItemId));
     if (payout) {
-      const status = event.event_type.endsWith("UNCLAIMED")
-        ? "UNCLAIMED"
-        : event.event_type.endsWith("CANCELED") || event.event_type.endsWith("CANCELLED")
-          ? "CANCELED"
-          : event.event_type.endsWith("FAILED") || event.event_type.endsWith("DENIED") || event.event_type.endsWith("RETURNED")
-            ? "FAILED"
-            : "SUCCESS";
       // Late delivery must not resurrect a cancelled payout or regress a settled item.
       if ((payout.status === "CANCELED" && status !== "CANCELED") || (["SUCCESS", "FAILED"].includes(payout.status) && status === "UNCLAIMED")) {
         await database.update(webhookEvents).set({ processedAt: nowIso() }).where(eq(webhookEvents.paypalEventId, event.id));
         return;
       }
-      await database.update(payouts).set({ status, confirmedAt: nowIso() }).where(eq(payouts.id, payout.id));
       const proposalStatus = status === "FAILED" ? "failed" : status === "CANCELED" ? "rolled_back" : "confirmed";
-      await database.update(proposals).set({ status: proposalStatus }).where(eq(proposals.id, payout.proposalId));
-      if (payout.purchaseOrderId) {
-        await database.update(purchaseOrders).set({ status: status === "SUCCESS" ? "paid" : status.toLowerCase() }).where(eq(purchaseOrders.id, payout.purchaseOrderId));
-      }
+      const restocked = await database.transaction(async (tx) => {
+        await tx.update(payouts).set({ status, confirmedAt: nowIso(), ...(itemId ? { payoutItemId: itemId } : {}) }).where(eq(payouts.id, payout.id));
+        await tx.update(proposals).set({ status: proposalStatus }).where(eq(proposals.id, payout.proposalId));
+        if (!payout.purchaseOrderId) return null;
+        // Claim the purchase order and add its units in one transaction. Retain
+        // the paid marker on later payment events so redelivery cannot add twice.
+        const [po] = await tx.update(purchaseOrders)
+          .set({ status: status === "SUCCESS" ? "paid" : status.toLowerCase() })
+          .where(and(eq(purchaseOrders.id, payout.purchaseOrderId), ne(purchaseOrders.status, "paid")))
+          .returning();
+        if (!po || status !== "SUCCESS") return null;
+        if (!Number.isInteger(po.qty) || po.qty <= 0) throw new Error("Invalid restock quantity");
+        const [product] = await tx.update(products).set({ stock: sql`${products.stock} + ${po.qty}` })
+          .where(eq(products.id, po.productId)).returning();
+        if (!product) throw new Error("Restock product not found");
+        return { sku: product.sku, qty: po.qty };
+      });
+      if (restocked) bus.emit({ type: "inventory.changed", sku: restocked.sku });
       const updated = (await database.select().from(payouts).where(eq(payouts.id, payout.id)))[0];
       bus.emit({ type: "payout.upserted", payout: updated });
       const proposal = await proposalView(payout.proposalId);
@@ -122,7 +143,7 @@ export async function applyPayPalEvent(event: {
         event: "payout.updated",
         proposalId: payout.proposalId,
         correlationId: proposal?.correlationId,
-        message: `Payout is ${status}.`,
+        message: `Payout is ${status}.${restocked ? ` Restocked ${restocked.qty} units of ${restocked.sku}.` : ""}`,
       });
     }
   }

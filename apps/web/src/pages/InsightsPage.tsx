@@ -29,6 +29,7 @@ import type { ShopCrewRegistry } from "../studio/registry";
 import { shopCrewStudioTheme } from "../studio/theme";
 import { buildShopCrewWidgets } from "../studio/widgets";
 import { usd, readable } from "../studio/widgets/InsightBars";
+import { agentLabel } from "../lib/agent-label";
 import {
   applyExplorer,
   defaultExplorer,
@@ -426,7 +427,7 @@ export function InsightsPage({
           {[...new Set(payload.proposals.map((row) => row.agent))]
             .sort()
             .map((agent) => (
-              <option key={agent}>{agent}</option>
+              <option key={agent} value={agent}>{agentLabel(agent)}</option>
             ))}
         </select>
       </label>
@@ -708,7 +709,7 @@ function InsightDrawer({
             <dl>
               {[
                 ["Decision", proposal.id],
-                ["Agent", proposal.agent],
+                ["Agent", agentLabel(proposal.agent)],
                 ["Simulation day", proposal.simDay],
                 ["Status", readable(proposal.status)],
                 [
@@ -762,7 +763,7 @@ function InsightDrawer({
               <li key={row.id}>
                 <strong>{usd(row.amount)}</strong>
                 <span>
-                  {row.agent} · {readable(row.status)}
+                  {agentLabel(row.agent)} · {readable(row.status)}
                 </span>
                 <span>Order {row.order}</span>
                 {row.proposalId && (

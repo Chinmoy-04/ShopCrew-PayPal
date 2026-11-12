@@ -9,6 +9,7 @@ import { openIntegratedChart } from "../chartHelpers";
 import { formatMoney, PayPalRef, PolicyVerdict } from "../renderers";
 import { gridTheme } from "../theme";
 import { useGridState } from "../useGridState";
+import { agentLabel } from "../../lib/agent-label";
 
 function ConfidenceBar(props: { value?: number | null }) {
   if (props.value == null) return null;
@@ -237,7 +238,7 @@ export function DecisionsGrid({ onGrid, focusId }: { onGrid: (api: GridApi) => v
     { field: "riskScore", headerName: "Risk", cellRenderer: RiskBar, minWidth: 90 },
     { field: "paypalRef", headerName: "PayPal", cellRenderer: PayPalRef, minWidth: 140 },
     { field: "createdAt", headerName: "Time", width: 90, valueFormatter: (p) => (p.value ? new Date(p.value).toLocaleTimeString() : "") },
-    { field: "agent", rowGroup: gridState.initialState ? gridState.initialState.rowGroup.groupColIds.includes("agent") : true, hide: true, enableRowGroup: true, chartDataType: "category" },
+    { field: "agent", valueFormatter: (p) => agentLabel(p.value), rowGroup: gridState.initialState ? gridState.initialState.rowGroup.groupColIds.includes("agent") : true, hide: true, enableRowGroup: true, chartDataType: "category" },
     {
       colId: "editedByOwner",
       headerName: "Edited",

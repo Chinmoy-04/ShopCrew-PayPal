@@ -4,6 +4,7 @@ import { AgGridReact } from "ag-grid-react";
 import { api, type AuditRow } from "../../api/client";
 import { onLive } from "../../hooks/useLiveEvents";
 import { gridTheme } from "../theme";
+import { agentLabel, agentSummary } from "../../lib/agent-label";
 
 export function AuditGrid({ onGrid }: { onGrid?: (api: import("ag-grid-community").GridApi) => void } = {}) {
   const [rows, setRows] = useState<AuditRow[]>([]);
@@ -11,10 +12,10 @@ export function AuditGrid({ onGrid }: { onGrid?: (api: import("ag-grid-community
   const columnDefs: ColDef<AuditRow>[] = [
     { field: "ts", headerName: "Time", valueFormatter: (p) => (p.value ? new Date(p.value).toLocaleTimeString() : "") },
     { field: "actor" },
-    { field: "agent" },
+    { field: "agent", valueFormatter: (p) => agentLabel(p.value) },
     { field: "event" },
     { field: "correlationId", rowGroup: true, hide: true },
-    { field: "message", flex: 2 },
+    { field: "message", flex: 2, valueFormatter: (p) => agentSummary(p.value) },
   ];
   useEffect(() => {
     const load = () => void api.audit().then(setRows);

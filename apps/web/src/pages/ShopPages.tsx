@@ -6,6 +6,7 @@ import { ProductImage } from "../components/ProductImage";
 import { Reveal } from "../components/BrowsingMotion";
 import { cartItems, saveCart, subscribeToCart, useCartCount } from "../lib/cart";
 import { CartLink } from "../components/CartLink";
+import { onLive } from "../hooks/useLiveEvents";
 export { cartItems, saveCart } from "../lib/cart";
 
 function HowToTest({ hint, email }: { hint?: string; email?: string }) {
@@ -22,7 +23,17 @@ function HowToTest({ hint, email }: { hint?: string; email?: string }) {
 export function ShopPage() {
   const [products, setProducts] = useState<Product[] | null>(null);
   const [error, setError] = useState("");
-  useEffect(() => { api.products().then(setProducts).catch((err) => setError(err.message)); }, []);
+  useEffect(() => {
+    let mounted = true;
+    const load = () => void api.products().then(rows => {
+      if (mounted) { setProducts(rows); setError(""); }
+    }).catch(err => { if (mounted) setError(err.message); });
+    load();
+    const stop = onLive(event => {
+      if (["inventory.changed", "sim.updated", "sim.reset", "order.upserted"].includes(event.type)) load();
+    });
+    return () => { mounted = false; stop(); };
+  }, []);
   if (error) return <main className="page store-page"><div className="error">{error}. Is the API running?</div></main>;
   if (!products) return <main className="page store-page"><p className="note">Loading the shop…</p></main>;
   if (!products.length) return <main className="page store-page"><div className="empty">No products yet. Reset the demo from the control room.</div></main>;
@@ -58,7 +69,17 @@ export function ProductPage() {
   const addButton = useRef<HTMLButtonElement>(null);
   const decreaseButton = useRef<HTMLButtonElement>(null);
   const quantityInCart = useCartCount(sku);
-  useEffect(() => { api.product(sku).then(setProduct).catch((err) => setError(err.message)); }, [sku]);
+  useEffect(() => {
+    let mounted = true;
+    const load = () => void api.product(sku).then(row => {
+      if (mounted) { setProduct(row); setError(""); }
+    }).catch(err => { if (mounted) setError(err.message); });
+    load();
+    const stop = onLive(event => {
+      if (["inventory.changed", "sim.updated", "sim.reset", "order.upserted"].includes(event.type)) load();
+    });
+    return () => { mounted = false; stop(); };
+  }, [sku]);
   if (error) return <main className="page store-page"><div className="error">{error}</div></main>;
   if (!product) return <main className="page store-page"><p className="note">Loading…</p></main>;
   const atZero = product.stock <= 0;
@@ -117,10 +138,14 @@ export function CartPage() {
   const [catalogLoaded, setCatalogLoaded] = useState(false);
   useEffect(() => {
     let mounted = true;
-    void api.products().then(rows => { if (mounted) { setProducts(rows); setCatalogLoaded(true); } }).catch(error => {
+    const load = () => void api.products().then(rows => { if (mounted) { setProducts(rows); setCatalogLoaded(true); setCatalogError(""); } }).catch(error => {
       if (mounted) setCatalogError(error instanceof Error ? error.message : "Could not load products");
     });
-    return () => { mounted = false; };
+    load();
+    const stop = onLive(event => {
+      if (["inventory.changed", "sim.updated", "sim.reset", "order.upserted"].includes(event.type)) load();
+    });
+    return () => { mounted = false; stop(); };
   }, []);
   const rows = items.map((item) => ({ ...item, product: products.find((product) => product.sku === item.sku) }));
   const total = rows.reduce((sum, row) => sum + (row.product?.price ?? 0) * row.qty, 0);

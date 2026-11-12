@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { agentLabel } from "../../lib/agent-label";
 import { BarChart } from "@/components/charts/bar-chart";
 import { Bar } from "@/components/charts/bar";
 import { Grid } from "@/components/charts/grid";
@@ -10,7 +11,7 @@ export const usd = (value: number) =>
     value,
   );
 export const readable = (label: string) =>
-  (label === label.toUpperCase() ? label.toLowerCase() : label)
+  (label === label.toUpperCase() ? agentLabel(label).toLowerCase() : agentLabel(label))
     .replace(/_/g, " ")
     .replace(/^./, (letter) => letter.toUpperCase());
 export function statusColor(status: string) {
