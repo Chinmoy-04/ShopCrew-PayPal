@@ -1,63 +1,68 @@
-# Devpost draft
+# Devpost submission notes
 
-## Text description
+This file is the submission copy and final handoff checklist for ShopCrew. The live event page lists the deadline as **November 12, 2026 at 12:00 PM Pacific (9:00 PM Budapest)**. Confirm the form shows the submission as submitted before the deadline.
 
-ShopCrew is the back office for a one-person online shop. Three agents do the daily work: pricing watches demand and competitors, inventory forecasts with Holt-Winters and pays suppliers, and customer service refunds captured PayPal orders. A policy engine (limits, daily budgets, a kill switch) decides what they may do alone. Everything else waits in an AG Grid control room where the owner can edit the amount, approve, reject, or roll back.
+## Project description
 
-PayPal is the money path, not a badge. Checkout uses Orders v2 and JavaScript SDK v6. Refunds are `create_refund` on the PayPal Agent Toolkit 1.11.0, with a REST fallback. Supplier payments use the Payouts API because the toolkit does not expose payouts. Webhooks are signature-checked and drive the grid from submitted to confirmed.
+ShopCrew is a back office for a one-person online shop. Its agents watch inventory and pricing, prepare customer-service actions, and route supplier payments. The owner reviews decisions in an AG Grid control room, where policy limits, reasons, payment status, and an audit trail are visible together.
 
-**AG Studio / Insights:** ShopCrew-themed dashboard with custom widgets, multi-source data, and the **Studio Agent Framework** — a custom agent roster (`shopcrew-lead`, refund-sentinel, cash-planner, reorder-risk) with telemetry into the audit log. OpenAI runs only through the server-side Studio harness (`AG_STUDIO_OPENAI_API_KEY`), not in the browser.
+The demo shop is Hearth & Wick. Checkout uses PayPal Orders and the JavaScript SDK. Customer refunds use the PayPal Agent Toolkit, and supplier payments use PayPal Payouts. Refunds and payouts have both been successfully exercised in PayPal Sandbox. PayPal webhooks are signature-checked and update the app when the provider reports a new payment status. An action is not shown as complete until its provider outcome supports that status.
 
-What is simulated: 180 days of sales, competitor prices, and the complaint inbox. What is sandbox-real when credentials are set: checkout capture, refunds, and payouts.
+ShopCrew pairs PayPal with AI and forecasting tools. Gemini and Groq can power agent narration and natural-language grid commands. AG Grid AI Toolkit applies grid changes, while AG Studio hosts the Insights dashboard and custom agent experience. A replay mode lets judges explore the app without model credentials. OpenAI is used only by the server-side AG Studio assistant harness.
 
-**Render Workflows (verify hosted run before submitting):** the operations review dispatches inventory forecasting and spending analysis in parallel, combines their results, and saves a retry-safe briefing to the audit log. The Workflow uses snapshot data and an authenticated callback; PayPal execution remains in the policy-gated web server. These report tasks use statistical/rule analysis, not an LLM.
+ShopCrew is designed for solo merchants who need routine work handled quickly without losing control of money movement. Agents can act within defined limits; unusual or higher-risk actions wait for the owner to review, edit, approve, reject, or roll back where supported.
 
-## AI tools
+The sales history, competitor prices, and complaint inbox are simulated demo data. PayPal checkout, refunds, and payouts use the sandbox when credentials are configured. The demo does not use live funds.
 
-- **Google Gemini** and **Groq** via the Vercel AI SDK — agent narration, natural-language grid commands, CS tool choice. Replay mode needs no key.
-- **OpenAI** (allowed models only) through the AG Studio AI harness proxy for Edit-mode dashboard building.
-- **PayPal Agent Toolkit 1.11.0** — `create_refund`, order context.
-- **AG Grid AI Toolkit** — `getStructuredSchema`, `setState` on the command bar.
-- **AG Studio Agent Framework** — custom agents, observers, ShopCrew widgets.
-- Holt-Winters and log-log elasticity (TypeScript, not LLM).
-- **Cursor** — implementation.
+## Tools used
 
-## Categories
+- **PayPal Orders API and JavaScript SDK** for sandbox checkout.
+- **PayPal Agent Toolkit 1.11.0** for refund and order-context tools; the app uses PayPal Payouts for supplier payments.
+- **Gemini and Groq**, through the Vercel AI SDK, for agent narration and natural-language grid commands.
+- **OpenAI** through the server-side AG Studio assistant harness.
+- **AG Grid AI Toolkit** and **AG Studio Agent Framework** for grid commands, custom widgets, and custom dashboard agents.
+- **Render** for hosting and operations workflows.
+- **Cursor** for development.
+- Holt-Winters forecasting and log-log price-elasticity analysis are implemented in TypeScript, not generated by an LLM.
 
-- Overall
+## Suggested categories
+
+Select only the categories that appear in the submission form and whose sponsor requirements the final project meets:
+
 - Best Use of PayPal + AI
 - Best Use of Agentic Commerce
 - Best Use of AG Grid
-- Render
+- Best Use of Render
 - Best Demo Delivery
 - Most Impactful
 
-## Testing instructions (fill before submit)
+## Demo and testing access
 
-1. **Hosted demo:** `https://YOUR_SERVICE.onrender.com` (warm with `node scripts/warmup.mjs` if cold).
-2. **Repo:** https://github.com/Chinmoy-04/ShopCrew-PayPal (MIT licence in About).
-3. **Sandbox buyer:** log in at checkout as `[DEMO_BUYER_EMAIL]` — password: `[paste from Render env / your sandbox notes]`. Use Sandbox only.
-4. **Path:** Shop → add candle → PayPal checkout → Control room → Advance day → edit $45 refund to $20 → approve → Insights → Studio AI prompt from anomaly banner.
-5. **Reset:** Control room **Reset** (admin token from Render `ADMIN_TOKEN`, or public reset if `DEMO_PUBLIC_RESET=1`).
+- **Repository:** https://github.com/Chinmoy-04/ShopCrew-PayPal
+- **License:** MIT, shown in the GitHub About panel.
+- **Hosted demo:** No verified public URL is recorded in this repository. Add the current URL here and in the Devpost form if the hosted demo is part of the submission. Otherwise, the repository's local run instructions provide the demo path.
+- **Run locally:** Node.js 22+, `npm ci`, copy `.env.example` to `.env`, then `npm run dev`. The app opens at `http://localhost:5173`. Without PayPal credentials, payment flows are clearly labeled DRY. See [README](../README.md) and [sandbox setup](sandbox-setup.md).
+- **Sandbox checkout:** Provide the sandbox buyer login details through the Devpost testing instructions. Keep passwords and API credentials out of this repository.
+- **Demo path:** Shop → add a candle → sandbox checkout → Control room → advance one day → review or approve a refund and supplier payout → Insights.
+- **Reset:** The hosted demo exposes the public demo reset with a cooldown. Local reset instructions are in the README.
 
-## Honesty
+## Video and images
 
-Sales history, competitor prices, and complaint text are simulated fixtures. Checkout, refunds, and payouts call PayPal sandbox when keys are configured; otherwise actions are labeled DRY. Webhook signature verification rejects unverified events. The paid Render Blueprint stores PGlite and the mutable capture pool on a persistent disk. Demo reset deliberately reseeds application data but does not restore refunded PayPal balances.
+The rules require a publicly visible YouTube video under three minutes that shows the working project on its target device. Add the YouTube URL to the Devpost form after upload. Use [the video outline](video-script.md), record only provider outcomes that actually occur, and use no unlicensed music or third-party material.
 
-## Checklist
+Recommended project images: the control room with a decision detail open, a PayPal checkout/order confirmation, and the Insights dashboard. Add current, unaltered product screenshots to `docs/screenshots/` before including them in the repository or Devpost.
 
-- [ ] Public GitHub repo, MIT licence visible in About
-- [ ] Render URL is warm (`/healthz`, `dryRun: false` with keys)
-- [ ] Sandbox buyer login in testing instructions above
-- [ ] YouTube video, public, ≤ 3:00, captions, no copyrighted music
-- [ ] Screenshots: control room, PayPal confirmation, Insights Studio
-- [ ] Categories selected (list above)
-- [ ] Submit by **Tue 10 Nov 2026** (deadline Thu 12 Nov 12:00 PST)
+## Final checks
 
-## Prize map
+- [ ] Enter the current public demo URL, or confirm the repository run instructions are complete enough for judges.
+- [ ] Add sandbox buyer instructions to the Devpost testing section; never commit the password or API keys.
+- [ ] Upload a public YouTube demo under 3:00 and paste its URL into the form.
+- [ ] Add screenshots of the current product to Devpost.
+- [ ] Confirm the selected categories match the current form and sponsor requirements.
+- [ ] Confirm the repository is public, MIT licensed, and contains the final source and run instructions.
+- [ ] Check that the demo is available free of charge for the judging period, which the rules list through December 15, 2026.
+- [ ] Submit the Devpost form and verify it is marked submitted, not draft.
 
-- Technological implementation: toolkit refunds behind a real gate, payouts, verified webhooks, idempotency, Studio Agent Framework, AG Grid AI Toolkit.
-- Design: shop, control room, Insights theme, landing page.
-- Impact: solo sellers, money moved only inside limits.
-- Innovation: agents propose, policy decides, PayPal executes, human supervises in the grid.
-- Presentation: scripted seed-42 day, live sandbox confirmations when keys are present.
+## Eligibility and judging notes
+
+The rules say that an existing project must have been significantly updated during the submission period and that the entrant should explain those changes. In the submission form, briefly describe ShopCrew's hackathon-period work: the PayPal sandbox checkout/refund/payout flows, policy-gated agent actions, owner control room, and AG Grid/AG Studio experience. Judges score technological implementation, design, potential impact, innovation, and presentation equally.
