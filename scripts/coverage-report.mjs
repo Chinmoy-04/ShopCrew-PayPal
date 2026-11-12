@@ -28,5 +28,6 @@ const output = {
   stats, runs: reports.map((report, run) => ({ run: run + 1, sourceReport: inputs[run], stats: report.stats })),
   cases: [...cases.values()],
 };
-fs.writeFileSync('docs/automated-test-results.json', JSON.stringify(output, null, 2) + '\n');
+fs.mkdirSync('.data', { recursive: true });
+fs.writeFileSync('.data/automated-test-results.json', JSON.stringify(output, null, 2) + '\n');
 console.log(`${cases.size} cases indexed across ${reports.length} run(s); ${stats.expected} passed, ${stats.unexpected} unexpected.`);

@@ -91,4 +91,4 @@ services:
 
 # PGlite + capture pool are on the paid disk; no expiring free Postgres required.
 # Do not enable keep-warm for this always-on deployment.
-# See docs/deployment.md for setup, backups, optional Postgres, and Workflow verification.
+# See README.md for setup notes. Keep backups private; do not commit runtime data.

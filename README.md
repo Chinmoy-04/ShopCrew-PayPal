@@ -18,7 +18,7 @@ Copy `.env.example` to `.env`, then start the app:
 npm run dev
 ```
 
-The shop runs at [http://localhost:5173](http://localhost:5173); the API runs at [http://localhost:8787](http://localhost:8787). With the default replay model and no PayPal credentials, the app runs in DRY mode, so payment actions are simulated and labeled as such. To try real sandbox checkout, refunds, and payouts, configure PayPal sandbox credentials as described in [Sandbox setup](docs/sandbox-setup.md). Never use live PayPal credentials for the demo.
+The shop runs at [http://localhost:5173](http://localhost:5173); the API runs at [http://localhost:8787](http://localhost:8787). With the default replay model and no PayPal credentials, the app runs in DRY mode, so payment actions are simulated and labeled as such. To try real sandbox checkout, refunds, and payouts, follow the PayPal setup below. Never use live PayPal credentials for the demo.
 
 To run the production build locally:
 
@@ -59,7 +59,30 @@ Agents propose actions. The server checks each proposal against policy before ca
 
 The app uses the PayPal Orders API and JavaScript SDK for checkout, the PayPal Agent Toolkit for refunds, and PayPal Payouts for supplier payments. AG Grid powers the decision workspace and natural-language grid commands. AG Studio provides the Insights dashboard and custom agent experience. Gemini and Groq can power agent narration and grid commands; replay mode keeps the app usable without an AI key. The AG Studio assistant uses its own server-side OpenAI configuration.
 
-For implementation details, see [Architecture](docs/architecture.md), [Sandbox setup](docs/sandbox-setup.md), and [Deployment](docs/deployment.md).
+## PayPal Sandbox setup
+
+1. In the [PayPal Developer Dashboard](https://developer.paypal.com/dashboard/), create a US Business sandbox account for the shop and US Personal sandbox accounts for a buyer and supplier.
+2. Create a Sandbox REST app attached to the Business account and enable Payouts if that option is available. Keep `PAYPAL_ENV=sandbox`.
+3. Copy the app's Client ID and Secret into `.env`:
+
+   ```env
+   PAYPAL_CLIENT_ID=your-sandbox-client-id
+   PAYPAL_CLIENT_SECRET=your-sandbox-secret
+   PAYPAL_ENV=sandbox
+   ```
+
+4. Set the buyer email in `DEMO_BUYER_EMAIL` and the supplier address in `SUPPLIER_EMAILS`. Keep sandbox passwords and API secrets private; do not commit them.
+5. For webhook updates, set `PUBLIC_BASE_URL` to the app's public HTTPS URL, then run `node scripts/register-webhook.mjs`. Save the returned ID as `PAYPAL_WEBHOOK_ID` and restart the app.
+
+Use the buyer's sandbox login in PayPal checkout. Refunds need an eligible sandbox capture. Payouts go to the configured sandbox supplier. A separate email with no sandbox account can be used to demonstrate an unclaimed payout, if that flow is enabled for the account.
+
+## Deploy to Render
+
+The root [Render Blueprint](render.yaml) defines the web app, persistent disk, and on-demand operations Workflow. In Render, create a Blueprint from this public GitHub repository, review the displayed service and storage costs, and supply the requested environment values. The web service needs PayPal Sandbox credentials and webhook settings for real payment flows. Optional model keys enable Gemini, Groq, or the separate AG Studio assistant; the default replay mode works without them.
+
+After Render assigns the web URL, set `PUBLIC_BASE_URL`, register the PayPal webhook from the service shell with `node scripts/register-webhook.mjs`, then save the returned ID as `PAYPAL_WEBHOOK_ID`. Set the Workflow's `SHOPCREW_BASE_URL` to the web URL and the web service's `RENDER_WORKFLOW_SLUG` to the Workflow slug. Never put credentials, admin tokens, runtime databases, or capture backups in GitHub.
+
+For local reference, the app is a React/Vite frontend with AG Grid, a Fastify API, PGlite storage, server-side policy checks, and PayPal Sandbox integrations. The Render disk stores PGlite and the mutable capture pool; demo reset reseeds application data but does not reverse PayPal transactions.
 
 ## Tests
 
