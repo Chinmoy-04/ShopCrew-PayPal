@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, CreditCard, Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Clock3, CreditCard, Minus, Plus, ShieldCheck, ShoppingBag, Trash2 } from "lucide-react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, type Product } from "../api/client";
 import { ProductImage } from "../components/ProductImage";
@@ -397,24 +397,47 @@ export function SuccessPage() {
 
   return (
     <main className="page store-page order-success-page">
-      <h1>Paid</h1>
-      {error && <div className="error">{error}</div>}
+      <header className="success-heading">
+        {order && <span className="success-mark" aria-hidden="true"><Check /></span>}
+        <div>
+          <h1>{order ? order.live ? "Payment received." : "Demo payment complete." : "Your payment"}</h1>
+          <p>{order ? "Thank you for shopping with Hearth & Wick." : "Your order details will appear here."}</p>
+        </div>
+      </header>
+      {error && <div className="error" role="alert">{error}</div>}
       {!order && !error && <p className="note">Loading order…</p>}
       {order && (
-        <div className="success-card">
-          <p>
-            <span className={`badge ${order.live ? "confirmed" : "dry"}`}>{order.live ? "LIVE" : "DRY"}</span>
-            {order.awaitingWebhook && <span className="badge pending_approval">captured, awaiting webhook</span>}
-            {order.confirmedAt && <span className="badge confirmed">confirmed</span>}
-          </p>
-          <p><strong>Order</strong> {order.id}</p>
-          <p><strong>PayPal order</strong> <code>{order.paypalOrderId}</code></p>
-          <p><strong>Capture</strong> <code>{order.paypalCaptureId}</code></p>
-          <p className="note">Total ${order.total.toFixed(2)}</p>
-          <Link className="btn primary" to={`/control?tab=orders&focus=${encodeURIComponent(order.id)}`}>
-            Open in control room
-          </Link>
-        </div>
+        <>
+          <section className="success-card" aria-label="Payment receipt">
+            <header className="success-receipt-heading">
+              <div className="success-merchant">
+                <h2>Hearth &amp; Wick</h2>
+                <p>{order.live ? "Paid with PayPal" : "Simulated checkout"}<span className={`badge ${order.live ? "confirmed" : "dry"}`}>{order.live ? "LIVE" : "DRY"}</span></p>
+              </div>
+              <div className="success-total">
+                <span>{order.live ? "Amount paid" : "Demo total"}</span>
+                <strong>${order.total.toFixed(2)}</strong>
+                <span>USD</span>
+              </div>
+            </header>
+            <dl className="success-references">
+              <div><dt>Order reference</dt><dd><code>{order.id}</code></dd></div>
+              <div><dt>PayPal order</dt><dd><code>{order.paypalOrderId || "—"}</code></dd></div>
+              <div><dt>Capture</dt><dd><code>{order.paypalCaptureId || "—"}</code></dd></div>
+            </dl>
+            <div className={`success-verification${order.awaitingWebhook ? " is-pending" : ""}`} role="status" aria-live="polite">
+              {order.awaitingWebhook ? <Clock3 aria-hidden="true" /> : <ShieldCheck aria-hidden="true" />}
+              <div>
+                <strong>{!order.live ? "Demo payment recorded" : order.awaitingWebhook ? "Payment captured · confirmation pending" : order.confirmedAt ? "Payment confirmed" : "Payment captured"}</strong>
+                <p>{!order.live ? "This is a DRY run. No PayPal payment was made." : order.awaitingWebhook ? "Your payment was captured. We’re waiting for PayPal’s confirmation; this page updates automatically." : order.confirmedAt ? "PayPal has confirmed this payment. Your payment references are saved above." : "Your payment references are saved above."}</p>
+              </div>
+            </div>
+          </section>
+          <div className="success-actions">
+            <Link className="btn primary" to="/shop">Continue shopping<ArrowRight aria-hidden="true" /></Link>
+            <Link className="text-link" to={`/control?tab=orders&focus=${encodeURIComponent(order.id)}`}>Open in control room<ArrowRight aria-hidden="true" /></Link>
+          </div>
+        </>
       )}
       {!order && <Link className="btn primary" to="/control">Open the control room</Link>}
     </main>
