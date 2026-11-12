@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, CreditCard, Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, type Product } from "../api/client";
 import { ProductImage } from "../components/ProductImage";
@@ -212,7 +212,21 @@ export function CheckoutPage({
   demoBuyerEmail?: string;
 }) {
   const navigate = useNavigate();
-  const items = cartItems();
+  const [items, setItems] = useState(cartItems);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [summaryError, setSummaryError] = useState("");
+  useEffect(() => subscribeToCart(() => setItems(cartItems())), []);
+  useEffect(() => {
+    let active = true;
+    void api.products().then(rows => { if (active) setProducts(rows); }).catch(() => {
+      if (active) setSummaryError("Order details could not be loaded. Return to your cart to review your items.");
+    });
+    return () => { active = false; };
+  }, []);
+  const rows = items.map(item => ({ ...item, product: products.find(product => product.sku === item.sku) }));
+  const itemCount = items.reduce((sum, item) => sum + item.qty, 0);
+  const summaryReady = rows.every(row => Boolean(row.product));
+  const total = rows.reduce((sum, row) => sum + (row.product?.price ?? 0) * row.qty, 0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -239,17 +253,33 @@ export function CheckoutPage({
 
   return (
     <main className="page store-page checkout-page">
-      <h1>Checkout</h1>
-      <HowToTest hint={demoBuyerHint} email={demoBuyerEmail} />
-      {dryRun && <div className="banner">PayPal sandbox credentials are not set. This checkout is labeled DRY and stays inside the demo database.</div>}
-      {!items.length && <div className="empty">Nothing to pay for.</div>}
-      {!!items.length && livePayPal && <PayPalSlot clientId={clientId!} items={items} onDone={(id) => { saveCart([]); navigate(`/checkout/success?order=${id}`); }} onError={setError} />}
+      <nav className="checkout-progress" aria-label="Checkout progress"><Link to="/cart">Cart</Link><span aria-hidden="true">/</span><span aria-current="step">Checkout</span><span aria-hidden="true">/</span><span>Confirmation</span></nav>
+      <header className="checkout-heading"><h1>Checkout</h1><p>One last step to a little warmth.</p></header>
+      {!items.length ? <section className="cart-empty-state"><ShoppingBag aria-hidden="true" /><h2>Your next ritual starts here.</h2><p>Nothing to pay for. Choose a candle to get started.</p><Link className="btn primary" to="/shop">Explore the candles<ArrowRight aria-hidden="true" /></Link></section> : <div className="checkout-layout">
+      <section className="checkout-payment" aria-labelledby="payment-heading">
+      <div className="checkout-payment-heading"><div><h2 id="payment-heading">Payment</h2><p>{livePayPal ? "Complete your order with PayPal." : "Review your order before continuing."}</p></div><CreditCard aria-hidden="true" /></div>
+      <div className="checkout-payment-method"><span>{livePayPal ? "PayPal" : demoOnly ? "Demo order" : "Payment setup"}</span>{(livePayPal || demoOnly) && <span className="badge dry">{livePayPal ? "Sandbox" : "DRY"}</span>}</div>
+      {dryRun && <div className="checkout-demo-note"><strong>Demo checkout</strong><p>PayPal sandbox credentials are not set. This checkout is labeled DRY and stays inside the demo database.</p></div>}
+      {livePayPal && <PayPalSlot key={JSON.stringify(items)} clientId={clientId!} items={items} onDone={(id) => { saveCart([]); navigate(`/checkout/success?order=${id}`); }} onError={setError} />}
       {!!items.length && livePayPal && <p className="note">Pay with the PayPal button. Log in as sandbox buyer <strong>Buyer Bob</strong> (not your real PayPal).</p>}
       {!!items.length && !livePayPal && !demoOnly && (
         <div className="banner">Sandbox keys are set, but the page loaded without the Client ID. Refresh once — then use the PayPal button.</div>
       )}
       {!!items.length && demoOnly && <button className="btn primary" disabled={busy} onClick={() => void payDry()}>{busy ? "Paying…" : "Place demo order"}</button>}
-      {error && <div className="error">{error}</div>}
+      {error && <div className="error" role="alert">{error}</div>}
+      <div className="checkout-help"><HowToTest hint={demoBuyerHint} email={demoBuyerEmail} /></div>
+      <Link className="text-link checkout-back" to="/cart"><ArrowLeft aria-hidden="true" />Back to cart</Link>
+      </section>
+      <aside className="checkout-summary" aria-labelledby="checkout-summary-heading"><header><h2 id="checkout-summary-heading">Your order<span>{itemCount}</span></h2><Link to="/cart">Edit cart</Link></header>
+      {summaryError && <p className="checkout-summary-error" role="status">{summaryError}</p>}
+      <div className="checkout-order-items">{rows.map(row => <article className="checkout-order-item" key={row.sku}>
+        <div className="checkout-order-image">{row.product ? <ProductImage product={row.product} /> : <ShoppingBag aria-hidden="true" />}</div>
+        <div><h3>{row.product?.name ?? row.sku}</h3><p>Qty {row.qty}{row.product ? ` · $${row.product.price.toFixed(2)} each` : ""}</p></div>
+        <strong>{row.product ? `$${(row.product.price * row.qty).toFixed(2)}` : "—"}</strong>
+      </article>)}</div>
+      <dl className="checkout-totals"><div><dt>Subtotal</dt><dd>{summaryReady ? `$${total.toFixed(2)}` : "—"}</dd></div><div className="checkout-grand-total"><dt>Total</dt><dd>{summaryReady ? `$${total.toFixed(2)}` : "—"}<span>USD</span></dd></div></dl>
+      <p className="checkout-order-note">{livePayPal ? "You’ll review and approve the payment in PayPal’s sandbox." : "This demo order uses the items and quantities shown above."}</p>
+      </aside></div>}
     </main>
   );
 }
