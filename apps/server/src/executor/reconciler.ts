@@ -13,10 +13,9 @@ export function startReconciler() {
 
 async function reconcile() {
   if (!paypal.configured()) return;
-  const rows = await db().select().from(proposals);
+  const rows = await db().select().from(proposals).where(eq(proposals.status, "submitted"));
   const cutoff = Date.now() - 90_000;
   for (const row of rows) {
-    if (row.status !== "submitted") continue;
     if (new Date(row.decidedAt ?? row.createdAt).getTime() > cutoff) continue;
     if (row.type === "refund") {
       const [refund] = await db().select().from(refunds).where(eq(refunds.proposalId, row.id));

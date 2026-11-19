@@ -1,6 +1,7 @@
+import { recentSales, recentCompetitorPrices } from "../../db/history.js";
 import { money } from "@shopcrew/shared";
 import { db } from "../../db/client.js";
-import { competitorPrices, products, salesDaily } from "../../db/schema.js";
+import { products } from "../../db/schema.js";
 import { expectedUnits, olsElasticity } from "../../ml/elasticity.js";
 import { holtWinters } from "../../ml/holtWinters.js";
 import type { DayPlan } from "../../sim/scenario.js";
@@ -9,8 +10,8 @@ import { narrate } from "../llm.js";
 
 export async function runPricing(plan: DayPlan): Promise<void> {
   const catalog = await db().select().from(products);
-  const sales = await db().select().from(salesDaily);
-  const rivals = await db().select().from(competitorPrices);
+  const sales = await recentSales();
+  const rivals = await recentCompetitorPrices();
   const proposals: { sku: string; next: number; reason: string }[] = [];
 
   if (plan.priceNudge) {

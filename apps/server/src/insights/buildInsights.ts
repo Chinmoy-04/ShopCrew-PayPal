@@ -1,8 +1,9 @@
+import { recentSales, recentCompetitorPrices } from "../db/history.js";
+import { eq } from "drizzle-orm";
 import { money } from "@shopcrew/shared";
 import { db } from "../db/client.js";
 import {
   actions,
-  competitorPrices,
   forecasts,
   orders,
   payouts,
@@ -11,7 +12,6 @@ import {
   proposals,
   purchaseOrders,
   refunds,
-  salesDaily,
   simState,
   studioAiRuns,
   suppliers,
@@ -23,8 +23,8 @@ import { reorderPlan } from "../ml/reorder.js";
 
 export async function inventoryRows() {
   const catalog = await db().select().from(products);
-  const sales = await db().select().from(salesDaily);
-  const rivals = await db().select().from(competitorPrices);
+  const sales = await recentSales();
+  const rivals = await recentCompetitorPrices();
   return catalog.map((product) => {
     const series = sales.filter((row) => row.productId === product.id).sort((a, b) => a.simDay - b.simDay);
     const hw = holtWinters(series.map((row) => row.units));
@@ -59,11 +59,9 @@ export async function inventoryRows() {
 export async function kpis() {
   const [sim] = await db().select().from(simState);
   const day = sim?.simDay ?? 0;
-  const allOrders = await db().select().from(orders);
-  const proposalRows = await db().select().from(proposals);
-  const todayOrders = allOrders.filter((row) => row.simDay === day);
+  const todayOrders = await db().select().from(orders).where(eq(orders.simDay, day));
+  const decisions = await db().select().from(proposals).where(eq(proposals.simDay, day));
   const revenueToday = todayOrders.reduce((sum, row) => sum + row.total, 0);
-  const decisions = proposalRows.filter((row) => row.simDay === day);
   const autoApproved = decisions.filter((row) => row.decidedBy === "policy" && ["confirmed", "submitted", "auto_approved", "executing"].includes(row.status)).length;
   const manualApproved = decisions.filter((row) => row.decidedBy === "owner").length;
   const pending = decisions.filter((row) => row.status === "pending_approval").length;
@@ -113,7 +111,7 @@ export async function buildInsightsPayload() {
     database.select().from(payouts),
     database.select().from(purchaseOrders),
     database.select().from(products),
-    database.select().from(salesDaily),
+    recentSales(),
     database.select().from(refunds),
     database.select().from(actions),
     database.select().from(studioAiRuns),

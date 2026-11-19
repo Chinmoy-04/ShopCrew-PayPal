@@ -1,6 +1,7 @@
+import { recentSales } from "../../db/history.js";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../../db/client.js";
-import { products, proposals, salesDaily, simState } from "../../db/schema.js";
+import { products, proposals, simState } from "../../db/schema.js";
 import { proposalView } from "../../db/views.js";
 import { writeAudit } from "../../db/audit.js";
 import { bus } from "../../bus/events.js";
@@ -9,7 +10,7 @@ import { narrate } from "../llm.js";
 
 export async function runOrchestrator(day: number): Promise<string> {
   const catalog = await db().select().from(products);
-  const sales = await db().select().from(salesDaily);
+  const sales = await recentSales();
   const open = await db()
     .select()
     .from(proposals)

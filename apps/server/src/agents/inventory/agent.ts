@@ -1,7 +1,8 @@
+import { recentSales } from "../../db/history.js";
 import { eq } from "drizzle-orm";
 import { money } from "@shopcrew/shared";
 import { db } from "../../db/client.js";
-import { products, purchaseOrders, salesDaily, suppliers } from "../../db/schema.js";
+import { products, purchaseOrders, suppliers } from "../../db/schema.js";
 import { holtWinters } from "../../ml/holtWinters.js";
 import { reorderPlan } from "../../ml/reorder.js";
 import type { DayPlan } from "../../sim/scenario.js";
@@ -29,7 +30,7 @@ export function negotiate(quote: number) {
 
 export async function runInventory(plan: DayPlan): Promise<string[]> {
   const catalog = await db().select().from(products);
-  const sales = await db().select().from(salesDaily);
+  const sales = await recentSales();
   const vendorRows = await db().select().from(suppliers);
   const notes: string[] = [];
   const queue: { sku: string; supplierId: string; qty: number; reason: string }[] = [];

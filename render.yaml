@@ -18,7 +18,7 @@ services:
       - key: NODE_VERSION
         value: "22"
       - key: PGLITE_DIR
-        value: /var/data/pglite
+        value: /var/data/pglite-v2
       - key: CAPTURE_POOL_PATH
         value: /var/data/capture-pool.json
       - key: WORKFLOW_CALLBACK_TOKEN

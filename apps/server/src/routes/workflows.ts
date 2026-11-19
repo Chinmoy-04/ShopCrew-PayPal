@@ -1,10 +1,11 @@
 import { timingSafeEqual } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { count, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { settings } from "../config.js";
 import { bus } from "../bus/events.js";
+import { recentSales } from "../db/history.js";
 import { db } from "../db/client.js";
-import { auditLog, policies, products, proposals, salesDaily, simState } from "../db/schema.js";
+import { auditLog, policies, products, proposals, simState } from "../db/schema.js";
 import { nowIso } from "../db/audit.js";
 import { spentToday } from "../agents/gate.js";
 import { reportSchema, type OperationsSnapshot } from "../workflows/analysis.js";
@@ -25,15 +26,15 @@ export async function registerWorkflowRoutes(app: FastifyInstance) {
     if (!apiKey || !slug) return reply.code(503).send({ error: "Render Workflows is not configured." });
     const [sim] = await db().select().from(simState);
     const catalog = await db().select().from(products);
-    const sales = await db().select().from(salesDaily);
+    const sales = await recentSales();
     const policyRows = await db().select().from(policies);
-    const decisions = await db().select().from(proposals);
+    const [pending] = await db().select({ total: count() }).from(proposals).where(eq(proposals.status, "pending_approval"));
     const snapshot: OperationsSnapshot = {
       simDay: sim.simDay, capturedAt: nowIso(),
       products: catalog.map((p) => ({ sku: p.sku, stock: p.stock, leadTimeDays: p.leadTimeDays,
         sales: sales.filter((s) => s.productId === p.id).sort((a, b) => a.simDay - b.simDay).map((s) => s.units) })),
       spend: await Promise.all(policyRows.map(async (p) => ({ agent: p.agent, budget: p.dailyBudget, amount: await spentToday(p.agent, sim.simDay) }))),
-      pendingApprovals: decisions.filter((p) => p.status === "pending_approval").length,
+      pendingApprovals: pending.total,
     };
     const requestId = crypto.randomUUID();
     const { Render } = await import("@renderinc/sdk");

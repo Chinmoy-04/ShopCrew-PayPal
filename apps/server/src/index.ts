@@ -12,7 +12,7 @@ import { products } from "./db/schema.js";
 import { seed } from "./db/seed.js";
 import { startReconciler } from "./executor/reconciler.js";
 import { registerRoutes } from "./routes/register.js";
-import { resumeAutorunIfNeeded } from "./sim/clock.js";
+import { stopAutorunOnStartup } from "./sim/clock.js";
 
 const app = Fastify({ logger: false });
 
@@ -49,7 +49,7 @@ await initDb();
 const existing = await db().select().from(products);
 if (!existing.length) await seed();
 startReconciler();
-await resumeAutorunIfNeeded();
+await stopAutorunOnStartup();
 
 const port = settings.port();
 await app.listen({ port, host: "0.0.0.0" });

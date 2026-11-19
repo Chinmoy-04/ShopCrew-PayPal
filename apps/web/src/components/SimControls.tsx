@@ -49,7 +49,7 @@ export function SimControls({ demoPublicReset }: { demoPublicReset?: boolean }) 
         <SimClock compact />
         <div className="control-actions">
           <button className="btn primary" disabled={busy || sim?.pausedAll} onClick={() => run(() => api.advance())}>Advance day</button>
-          <button className="btn" disabled={busy} onClick={() => run(() => api.autorun(!sim?.autorun))}>{sim?.autorun ? "Stop" : "Auto-run"}</button>
+          <button className="btn" disabled={busy} title="Auto-run up to seven simulation days" onClick={() => run(() => api.autorun(!sim?.autorun))}>{sim?.autorun ? "Stop" : "Auto-run"}</button>
           <button className="btn" disabled={busy} onClick={() => run(() => api.pause(!sim?.pausedAll))}>{sim?.pausedAll ? "Resume" : "Pause"}</button>
           <button
             className="btn"

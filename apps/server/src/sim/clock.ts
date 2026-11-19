@@ -176,22 +176,28 @@ async function insertMessages(day: number, plan: DayPlan) {
 
 export async function setAutorun(enabled: boolean) {
   if (enabled && resetting) throw Object.assign(new Error("Wait for the demo reset to finish."), { statusCode: 409 });
-  await db().update(simState).set({ autorun: enabled }).where(eq(simState.id, 1));
+  const [sim] = await db().update(simState).set({ autorun: enabled }).where(eq(simState.id, 1)).returning();
   if (timer) clearInterval(timer);
   timer = null;
   if (enabled) {
-    timer = setInterval(() => {
-      void advanceDay().catch((error) => console.warn("autorun day failed", error));
+    const lastDay = sim.simDay + 7;
+    const sessionTimer = setInterval(() => {
+      if (running) return;
+      void advanceDay().then(async ({ simDay }) => {
+        if (timer === sessionTimer && simDay >= lastDay) await setAutorun(false);
+      }).catch(async (error) => {
+        console.warn("autorun day failed", error);
+        if (timer === sessionTimer) await setAutorun(false);
+      }).catch((error) => console.error("Failed to stop auto-run", error));
     }, 20_000);
+    timer = sessionTimer;
   }
-  const [sim] = await db().select().from(simState);
   bus.emit({ type: "sim.updated", sim });
 }
 
-/** Call after DB init so Auto-run survives server restarts. */
-export async function resumeAutorunIfNeeded() {
+export async function stopAutorunOnStartup() {
   const [sim] = await db().select().from(simState);
-  if (sim?.autorun && !sim.pausedAll) await setAutorun(true);
+  if (sim?.autorun) await setAutorun(false);
 }
 
 export async function setPaused(paused: boolean) {

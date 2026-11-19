@@ -8,7 +8,7 @@ import { resetDatabase } from "../src/db/seed.js";
 import * as seedModule from "../src/db/seed.js";
 import { products, proposals, simState } from "../src/db/schema.js";
 import { registerRoutes } from "../src/routes/register.js";
-import { advanceDay, resetSimulation, setAutorun, simulationResetting } from "../src/sim/clock.js";
+import { advanceDay, resetSimulation, setAutorun, stopAutorunOnStartup, simulationResetting } from "../src/sim/clock.js";
 import { readCapturePool, writeCapturePool } from "../src/paypal/capturePool.js";
 
 const app = Fastify();
@@ -63,6 +63,33 @@ it("stops the actual auto-run timer so the reset stays at Day 0", async () => {
     expect((await db().select().from(simState))[0]).toMatchObject({ simDay: 0, autorun: false });
     expect(vi.getTimerCount()).toBe(0);
   } finally { vi.useRealTimers(); }
+});
+
+it("leaves a previously running demo stopped on startup and bounds its history reads", async () => {
+  const { recentSales, recentCompetitorPrices } = await import("../src/db/history.js");
+  expect((await recentSales()).length).toBeGreaterThan(0);
+  await db().update(simState).set({ simDay: 25643, autorun: true });
+  await stopAutorunOnStartup();
+  expect((await app.inject("/api/sim")).json()).toMatchObject({ simDay: 25643, autorun: false });
+  expect(await recentSales()).toEqual([]);
+  expect(await recentCompetitorPrices()).toEqual([]);
+});
+
+it("stops scheduling days once the seven-day auto-run session is complete", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  try {
+    await setAutorun(true);
+    await db().update(simState).set({ simDay: 6 });
+    await vi.advanceTimersByTimeAsync(20_000);
+    await vi.waitFor(async () => {
+      expect((await app.inject("/api/sim")).json()).toMatchObject({ simDay: 7, autorun: false });
+    }, { timeout: 10_000 });
+    await vi.advanceTimersByTimeAsync(40_000);
+    expect((await app.inject("/api/sim")).json().simDay).toBe(7);
+  } finally {
+    await setAutorun(false);
+    vi.useRealTimers();
+  }
 });
 
 it("retains owner authentication when public reset is disabled", async () => {
